@@ -111,6 +111,10 @@ button {
 
 .cta-row {
   margin-top: 1.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
 }
 
 .cta {
@@ -127,12 +131,42 @@ button {
   transition: transform 0.2s ease, background 0.2s ease;
 }
 
+.cta-secondary {
+  background: transparent;
+  color: var(--foam);
+  border: 1px solid var(--line);
+}
+
+.cta-secondary:hover {
+  background: rgba(238, 247, 240, 0.08);
+}
+
 .cta:active {
   transform: scale(0.97);
 }
 
 .cta:hover {
   background: #d8ff78;
+}
+
+.cta-secondary:hover {
+  background: rgba(238, 247, 240, 0.08);
+}
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.upload-note {
+  margin: 0.85rem 0 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--signal);
 }
 
 /* —— AR field —— */
@@ -223,6 +257,31 @@ button {
   font-size: 0.92rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.hud-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.upload-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.6rem;
+  padding: 0 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.upload-btn:active {
+  transform: scale(0.96);
 }
 
 .watch-btn {

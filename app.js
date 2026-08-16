@@ -52,6 +52,9 @@ const theater = document.getElementById("theater");
 const theaterVideo = document.getElementById("theater-video");
 const theaterTitle = document.getElementById("theater-title");
 const closeTheater = document.getElementById("close-theater");
+const uploadNote = document.getElementById("upload-note");
+const videoInputGate = document.getElementById("video-input-gate");
+const videoInputField = document.getElementById("video-input-field");
 
 const state = {
   yaw: 0,
@@ -65,6 +68,8 @@ const state = {
   watching: false,
   booting: false,
   booted: false,
+  pendingUploads: [],
+  uploadCount: 0,
   nodes: [],
   clock: new THREE.Clock(),
 };
@@ -120,13 +125,94 @@ function roundRect(ctx, x, y, w, h, r) {
 function makeVideoElement(src) {
   const video = document.createElement("video");
   video.src = src;
-  video.crossOrigin = "anonymous";
+  // Blob/object URLs break if crossOrigin is forced
+  if (!src.startsWith("blob:") && !src.startsWith("file:")) {
+    video.crossOrigin = "anonymous";
+  }
   video.loop = true;
   video.muted = true;
   video.playsInline = true;
   video.preload = "metadata";
   video.setAttribute("playsinline", "");
+  video.setAttribute("webkit-playsinline", "");
   return video;
+}
+
+function nextRingPosition(index) {
+  const radius = 3.6 + Math.floor(index / 8) * 1.15;
+  const angle = (index * 2.399) % (Math.PI * 2); // golden-angle spread
+  const y = 1.25 + (index % 3) * 0.18;
+  return [Math.sin(angle) * radius, y, -Math.cos(angle) * radius];
+}
+
+function titleFromFile(file, fallbackIndex) {
+  const base = (file.name || `Video ${fallbackIndex}`).replace(/\.[^.]+$/, "");
+  return base.slice(0, 28) || `Video ${fallbackIndex}`;
+}
+
+function createNode(item, index) {
+  const group = new THREE.Group();
+  group.position.set(...item.position);
+
+  const video = makeVideoElement(item.src);
+  const texture = new THREE.VideoTexture(video);
+  texture.colorSpace = THREE.SRGBColorSpace;
+
+  const screen = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.4, 1.35),
+    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
+  );
+  screen.position.y = 0.2;
+  screen.userData.hit = true;
+
+  const frame = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.56, 1.51),
+    new THREE.MeshBasicMaterial({
+      color: 0xc6ff4a,
+      transparent: true,
+      opacity: 0.18,
+      side: THREE.DoubleSide,
+    })
+  );
+  frame.position.z = -0.01;
+  frame.position.y = 0.2;
+
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.2, 0.55),
+    new THREE.MeshBasicMaterial({
+      map: createLabelTexture(item.title, item.blurb),
+      transparent: true,
+      side: THREE.DoubleSide,
+    })
+  );
+  label.position.set(0, 1.2, 0.02);
+
+  const beacon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.08, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xc6ff4a })
+  );
+  beacon.position.set(0, -0.65, 0.05);
+
+  group.add(frame, screen, label, beacon);
+  scene.add(group);
+
+  const radar = document.createElement("span");
+  radar.className = "radar-dot";
+  radarDots.appendChild(radar);
+
+  return {
+    ...item,
+    group,
+    screen,
+    frame,
+    beacon,
+    video,
+    texture,
+    radar,
+    baseY: item.position[1],
+    phase: index * 1.1,
+    previewing: false,
+  };
 }
 
 function buildScene() {
@@ -164,71 +250,13 @@ function buildScene() {
   ground.position.y = 0.01;
   scene.add(ground);
 
-  state.nodes = CATALOG.map((item, index) => {
-    const group = new THREE.Group();
-    group.position.set(...item.position);
-    group.lookAt(0, item.position[1], 0);
+  state.nodes = CATALOG.map((item, index) => createNode(item, index));
 
-    const video = makeVideoElement(item.src);
-    const texture = new THREE.VideoTexture(video);
-    texture.colorSpace = THREE.SRGBColorSpace;
-
-    const screen = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.4, 1.35),
-      new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
-    );
-    screen.position.y = 0.2;
-    screen.userData.hit = true;
-
-    const frame = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.56, 1.51),
-      new THREE.MeshBasicMaterial({
-        color: 0xc6ff4a,
-        transparent: true,
-        opacity: 0.18,
-        side: THREE.DoubleSide,
-      })
-    );
-    frame.position.z = -0.01;
-    frame.position.y = 0.2;
-
-    const label = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.2, 0.55),
-      new THREE.MeshBasicMaterial({
-        map: createLabelTexture(item.title, item.blurb),
-        transparent: true,
-        side: THREE.DoubleSide,
-      })
-    );
-    label.position.set(0, 1.2, 0.02);
-
-    const beacon = new THREE.Mesh(
-      new THREE.SphereGeometry(0.08, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0xc6ff4a })
-    );
-    beacon.position.set(0, -0.65, 0.05);
-
-    group.add(frame, screen, label, beacon);
-    scene.add(group);
-
-    const radar = document.createElement("span");
-    radar.className = "radar-dot";
-    radarDots.appendChild(radar);
-
-    return {
-      ...item,
-      group,
-      screen,
-      frame,
-      beacon,
-      video,
-      texture,
-      radar,
-      baseY: item.position[1],
-      phase: index * 1.1,
-      previewing: false,
-    };
-  });
+  // Apply any videos picked on the gate before entering
+  if (state.pendingUploads.length) {
+    addUploadedFiles(state.pendingUploads, { silent: true });
+    state.pendingUploads = [];
+  }
 }
 
 function updateCameraRig(dt) {
@@ -553,6 +581,78 @@ async function enterField() {
 enterBtn.addEventListener("click", enterField);
 watchBtn.addEventListener("click", () => openTheater(state.focused));
 closeTheater.addEventListener("click", closeTheaterMode);
+
+function updateUploadNote(count) {
+  if (!uploadNote) return;
+  if (!count) {
+    uploadNote.hidden = true;
+    uploadNote.textContent = "";
+    return;
+  }
+  uploadNote.hidden = false;
+  uploadNote.textContent =
+    count === 1
+      ? "1 video ready — Open lens to place it in AR"
+      : `${count} videos ready — Open lens to place them in AR`;
+}
+
+function addUploadedFiles(fileList, { silent = false } = {}) {
+  const files = [...fileList].filter((f) => f.type.startsWith("video/"));
+  if (!files.length) {
+    if (!silent) setStatus("Pick video files (mp4, mov, etc.)");
+    return 0;
+  }
+
+  // Before the field boots, queue for later
+  if (!state.booted || !scene) {
+    state.pendingUploads.push(...files);
+    updateUploadNote(state.pendingUploads.length);
+    if (!silent) {
+      setStatus(
+        files.length === 1
+          ? "Video added — tap Open lens"
+          : `${files.length} videos added — tap Open lens`
+      );
+    }
+    return files.length;
+  }
+
+  let added = 0;
+  for (const file of files) {
+    state.uploadCount += 1;
+    const index = state.nodes.length;
+    const url = URL.createObjectURL(file);
+    const item = {
+      id: `upload-${state.uploadCount}`,
+      title: titleFromFile(file, state.uploadCount),
+      blurb: "From your phone",
+      src: url,
+      position: nextRingPosition(index),
+      objectUrl: url,
+    };
+    const node = createNode(item, index);
+    state.nodes.push(node);
+    added += 1;
+  }
+
+  if (!silent) {
+    setStatus(
+      added === 1
+        ? "Video placed in the field — look around"
+        : `${added} videos placed in the field — look around`
+    );
+  }
+  return added;
+}
+
+function onPickVideos(event) {
+  const input = event.target;
+  addUploadedFiles(input.files || []);
+  input.value = "";
+}
+
+videoInputGate?.addEventListener("change", onPickVideos);
+videoInputField?.addEventListener("change", onPickVideos);
 
 // Desktop keyboard nudge
 window.addEventListener("keydown", (e) => {
