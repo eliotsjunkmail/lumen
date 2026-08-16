@@ -94,6 +94,7 @@ const _forward = new THREE.Vector3();
 const _to = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _place = new THREE.Vector3();
+const _corner = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
 
 function setStatus(message, ms = 2800) {
