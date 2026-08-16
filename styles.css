@@ -567,6 +567,91 @@ button {
   transform: scale(0.97);
 }
 
+.name-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: end center;
+  padding: calc(18px + var(--safe-top)) 16px calc(24px + var(--safe-bottom));
+  background: rgba(2, 8, 5, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.name-modal[hidden] {
+  display: none !important;
+}
+
+.name-panel {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.15rem 1.15rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--glass-strong);
+}
+
+.name-brand {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: var(--signal);
+  letter-spacing: -0.04em;
+}
+
+.name-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+}
+
+.name-file {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(238, 247, 240, 0.65);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name-input {
+  width: 100%;
+  min-height: 3rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(238, 247, 240, 0.06);
+  color: var(--foam);
+  font: inherit;
+  font-weight: 600;
+  padding: 0 0.9rem;
+  outline: none;
+}
+
+.name-input:focus {
+  border-color: rgba(198, 255, 74, 0.55);
+}
+
+.name-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.name-submit {
+  min-height: 2.75rem;
+}
+
+.name-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: rgba(238, 247, 240, 0.62);
+}
+
 @keyframes drift {
   from {
     transform: translate3d(0, 0, 0);

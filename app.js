@@ -1,5 +1,8 @@
 import * as THREE from "three";
 
+const GEO_RANGE_FT = 25;
+const GEO_RANGE_M = GEO_RANGE_FT * 0.3048;
+
 const CATALOG = [
   {
     id: "bloom",
@@ -57,6 +60,11 @@ const videoInputGate = document.getElementById("video-input-gate");
 const videoInputField = document.getElementById("video-input-field");
 const deleteBtn = document.getElementById("delete-btn");
 const theaterDelete = document.getElementById("theater-delete");
+const nameModal = document.getElementById("name-modal");
+const nameForm = document.getElementById("name-form");
+const nameInput = document.getElementById("name-input");
+const nameFile = document.getElementById("name-file");
+const nameCancel = document.getElementById("name-cancel");
 
 const state = {
   offsetYaw: 0,
@@ -70,7 +78,12 @@ const state = {
   booting: false,
   booted: false,
   pendingUploads: [],
+  nameQueue: [],
+  naming: false,
   uploadCount: 0,
+  originGeo: null,
+  userGeo: null,
+  geoWatchId: null,
   nodes: [],
   clock: new THREE.Clock(),
   hasGyro: false,
@@ -96,6 +109,106 @@ const _right = new THREE.Vector3();
 const _place = new THREE.Vector3();
 const _corner = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
+
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const R = 6378137;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+function enuFromOrigin(originLat, originLng, lat, lng) {
+  const R = 6378137;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat - originLat);
+  const dLng = toRad(lng - originLng);
+  const east = dLng * Math.cos(toRad(originLat)) * R;
+  const north = dLat * R;
+  return { x: east, y: 0, z: -north };
+}
+
+function offsetLatLng(lat, lng, eastM, northM) {
+  const R = 6378137;
+  const dLat = (northM / R) * (180 / Math.PI);
+  const dLng =
+    (eastM / (R * Math.cos((lat * Math.PI) / 180))) * (180 / Math.PI);
+  return { lat: lat + dLat, lng: lng + dLng };
+}
+
+function readGps() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Location unavailable"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        resolve({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        }),
+      reject,
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 4000 }
+    );
+  });
+}
+
+function startGeoWatch() {
+  if (!navigator.geolocation || state.geoWatchId != null) return;
+  state.geoWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      state.userGeo = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      };
+      if (!state.originGeo) state.originGeo = { ...state.userGeo };
+      updateGeoAnchors();
+    },
+    (err) => console.warn(err),
+    { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+  );
+}
+
+function aimMetersOnGround(distance = 3.5) {
+  if (!camera) return { east: 0, north: distance };
+  camera.getWorldDirection(_forward);
+  const flat = new THREE.Vector3(_forward.x, 0, _forward.z);
+  if (flat.lengthSq() < 0.0001) flat.set(0, 0, -1);
+  flat.normalize().multiplyScalar(distance);
+  return { east: flat.x, north: -flat.z };
+}
+
+function updateGeoAnchors() {
+  const user = state.userGeo || state.originGeo;
+  if (!user) return;
+
+  for (const node of state.nodes) {
+    if (node.lat == null || node.lng == null) continue;
+
+    const dist = distanceMeters(user.lat, user.lng, node.lat, node.lng);
+    node.distanceM = dist;
+    const inRange = dist <= GEO_RANGE_M;
+    node.inRange = inRange;
+    node.group.visible = inRange;
+    if (node.radar) node.radar.style.display = inRange ? "" : "none";
+
+    const origin = state.originGeo || user;
+    const enu = enuFromOrigin(origin.lat, origin.lng, node.lat, node.lng);
+    node.anchorX = enu.x;
+    node.anchorZ = enu.z;
+    const feet = Math.max(1, Math.round(dist * 3.28084));
+    node.blurb = inRange ? `${feet} ft · aim from any side` : `Out of range (${feet} ft)`;
+    if (state.focused === node) hudHint.textContent = node.blurb;
+
+    if (!inRange && state.focused === node) setFocus(null);
+  }
+}
 
 function setStatus(message, ms = 2800) {
   statusEl.textContent = message;
@@ -275,6 +388,11 @@ function createNode(item, index) {
   const node = {
     ...item,
     deletable: Boolean(item.deletable),
+    lat: item.lat ?? null,
+    lng: item.lng ?? null,
+    inRange: item.lat == null ? true : Boolean(item.inRange),
+    anchorX: item.position[0],
+    anchorZ: item.position[2],
     group,
     screen,
     frame,
@@ -287,6 +405,10 @@ function createNode(item, index) {
     phase: index * 1.1,
     previewing: false,
   };
+  if (node.lat != null) {
+    node.group.visible = node.inRange;
+    node.radar.style.display = node.inRange ? "" : "none";
+  }
 
   const onMeta = () => applyVideoAspect(node);
   if (video.readyState >= 1) onMeta();
@@ -406,23 +528,6 @@ function buildScene() {
   scene.add(ground);
 
   state.nodes = CATALOG.map((item, index) => createNode(item, index));
-
-  if (state.pendingUploads.length) {
-    const pending = state.pendingUploads.splice(0, state.pendingUploads.length);
-    const placePending = () => {
-      addUploadedFiles(pending, { silent: true });
-      updateUploadNote(0);
-      setStatus("Your videos were placed where the lens opened");
-    };
-    // Wait briefly for gyro so placement matches phone orientation
-    let tries = 0;
-    const wait = () => {
-      tries += 1;
-      if (state.orientReady || tries > 50) placePending();
-      else requestAnimationFrame(wait);
-    };
-    requestAnimationFrame(wait);
-  }
 }
 
 function getScreenOrientRad() {
@@ -466,6 +571,8 @@ function updateCameraRig(dt) {
 
 function updateNodes(t) {
   for (const node of state.nodes) {
+    if (node.anchorX != null) node.group.position.x = node.anchorX;
+    if (node.anchorZ != null) node.group.position.z = node.anchorZ;
     node.group.position.y = node.baseY + Math.sin(t * 1.2 + node.phase) * 0.08;
     node.beacon.scale.setScalar(1 + Math.sin(t * 3 + node.phase) * 0.25);
 
@@ -474,7 +581,7 @@ function updateNodes(t) {
     node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
     node.radar.classList.toggle("is-hot", hot);
 
-    // Billboard: keep screen facing viewer horizontally
+    // Billboard: readable from any direction when in range
     const dx = camera.position.x - node.group.position.x;
     const dz = camera.position.z - node.group.position.z;
     node.group.rotation.y = Math.atan2(dx, dz);
@@ -522,18 +629,20 @@ function pausePreviews(exceptId) {
 }
 
 function pickCenter() {
-  // Aim-cone focus: closest screen near view center (Pokémon Go style lock-on)
+  // Aim-cone focus: must be in range for geo pins; billboard faces you from any side
   camera.getWorldDirection(_forward);
   let best = null;
   let bestScore = Infinity;
 
   for (const node of state.nodes) {
+    if (!node.group.visible) continue;
+    if (node.lat != null && !node.inRange) continue;
     _to.copy(node.group.position).sub(camera.position);
     const dist = _to.length();
-    if (dist < 0.4 || dist > 12) continue;
+    if (dist < 0.35 || dist > 14) continue;
     _to.normalize();
     const ang = Math.acos(THREE.MathUtils.clamp(_forward.dot(_to), -1, 1));
-    if (ang > 0.38) continue; // ~22 degrees
+    if (ang > 0.42) continue;
     const score = ang * 2.2 + dist * 0.08;
     if (score < bestScore) {
       bestScore = score;
@@ -548,13 +657,13 @@ function setFocus(node) {
   field.classList.toggle("is-locked", Boolean(node));
   if (node) {
     focusLabel.textContent = node.title;
-    hudHint.textContent = node.blurb;
+    hudHint.textContent = node.blurb || "Aim locked";
     watchBtn.disabled = false;
     ensurePreview(node);
     pausePreviews(node.id);
   } else {
     focusLabel.textContent = "Scan the field";
-    hudHint.textContent = "Look around to find videos";
+    hudHint.textContent = "Within 25 ft, aim from any direction";
     watchBtn.disabled = true;
     pausePreviews(null);
   }
@@ -735,6 +844,8 @@ function animate() {
   updateCameraRig(dt);
   updateNodes(t);
   updateRadar();
+  // Keep geo pins synced if watch hasn't fired yet
+  if (state.userGeo) updateGeoAnchors();
 
   if (!state.watching) {
     const node = pickCenter();
@@ -772,10 +883,28 @@ function bootField(message) {
 
   if (renderer) animate();
   setStatus(message);
-  // Re-kick camera playback now that the video is visible (helps iOS)
   if (camEl.srcObject) {
     camEl.play().catch(() => {});
   }
+
+  if (state.pendingUploads.length) {
+    state.nameQueue.push(...state.pendingUploads.splice(0));
+    updateUploadNote(0);
+  }
+
+  (async () => {
+    try {
+      const geo = await readGps();
+      state.userGeo = geo;
+      state.originGeo = geo;
+      startGeoWatch();
+      updateGeoAnchors();
+    } catch (err) {
+      console.warn(err);
+      setStatus("Enable location to pin videos within 25 ft", 4500);
+    }
+    await processNameQueue();
+  })();
 }
 
 async function enterField() {
@@ -834,60 +963,128 @@ function updateUploadNote(count) {
   uploadNote.hidden = false;
   uploadNote.textContent =
     count === 1
-      ? "1 video ready — Open lens to place it in AR"
-      : `${count} videos ready — Open lens to place them in AR`;
+      ? "1 video selected — Open lens to name & pin it"
+      : `${count} videos selected — Open lens to name & pin them`;
 }
 
-function addUploadedFiles(fileList, { silent = false } = {}) {
+function openNameModal(file) {
+  return new Promise((resolve) => {
+    state.naming = true;
+    nameFile.textContent = file.name || "Video";
+    nameInput.value = titleFromFile(file, state.uploadCount + 1);
+    nameModal.hidden = false;
+    requestAnimationFrame(() => {
+      nameInput.focus();
+      nameInput.select();
+    });
+
+    const cleanup = () => {
+      nameForm.removeEventListener("submit", onSubmit);
+      nameCancel.removeEventListener("click", onCancel);
+      nameModal.hidden = true;
+      state.naming = false;
+    };
+
+    const onCancel = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    const onSubmit = (e) => {
+      e.preventDefault();
+      const name = nameInput.value.trim().slice(0, 80);
+      if (!name) return;
+      cleanup();
+      resolve(name);
+    };
+
+    nameForm.addEventListener("submit", onSubmit);
+    nameCancel.addEventListener("click", onCancel);
+  });
+}
+
+async function placeNamedVideo(file, name) {
+  state.uploadCount += 1;
+  const url = URL.createObjectURL(file);
+
+  let geo = state.userGeo || state.originGeo;
+  if (!geo) {
+    try {
+      geo = await readGps();
+      state.userGeo = geo;
+      state.originGeo = state.originGeo || geo;
+      startGeoWatch();
+    } catch (err) {
+      console.warn(err);
+      setStatus("Location permission needed to geo-pin videos", 4200);
+      URL.revokeObjectURL(url);
+      throw err;
+    }
+  }
+
+  const aim = aimMetersOnGround(3.2);
+  const pinned = offsetLatLng(geo.lat, geo.lng, aim.east, aim.north);
+  const origin = state.originGeo || geo;
+  const enu = enuFromOrigin(origin.lat, origin.lng, pinned.lat, pinned.lng);
+
+  const node = createNode(
+    {
+      id: `upload-${state.uploadCount}`,
+      title: name,
+      blurb: "Within 25 ft · aim from any side",
+      src: url,
+      position: [enu.x, 1.4, enu.z],
+      objectUrl: url,
+      deletable: true,
+      lat: pinned.lat,
+      lng: pinned.lng,
+      inRange: true,
+    },
+    state.nodes.length
+  );
+  state.nodes.push(node);
+  updateGeoAnchors();
+  setStatus(`“${name}” pinned — visible within ${GEO_RANGE_FT} ft`);
+  return node;
+}
+
+async function processNameQueue() {
+  if (state.naming) return;
+  while (state.nameQueue.length) {
+    if (!state.booted || !scene) break;
+    const file = state.nameQueue.shift();
+    const name = await openNameModal(file);
+    if (!name) continue;
+    try {
+      await placeNamedVideo(file, name);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  updateUploadNote(state.nameQueue.length + state.pendingUploads.length);
+}
+
+function addUploadedFiles(fileList) {
   const files = [...fileList].filter((f) => f.type.startsWith("video/"));
   if (!files.length) {
-    if (!silent) setStatus("Pick video files (mp4, mov, etc.)");
+    setStatus("Pick video files (mp4, mov, etc.)");
     return 0;
   }
 
-  // Before the field boots, queue for later (placed along aim when lens opens)
   if (!state.booted || !scene) {
     state.pendingUploads.push(...files);
     updateUploadNote(state.pendingUploads.length);
-    if (!silent) {
-      setStatus(
-        files.length === 1
-          ? "Video added — tap Open lens"
-          : `${files.length} videos added — tap Open lens`
-      );
-    }
+    setStatus(
+      files.length === 1
+        ? "Video selected — Open lens to name & pin"
+        : `${files.length} videos selected — Open lens to name & pin`
+    );
     return files.length;
   }
 
-  let added = 0;
-  const total = files.length;
-  for (let i = 0; i < files.length; i += 1) {
-    const file = files[i];
-    state.uploadCount += 1;
-    const index = state.nodes.length;
-    const url = URL.createObjectURL(file);
-    const item = {
-      id: `upload-${state.uploadCount}`,
-      title: titleFromFile(file, state.uploadCount),
-      blurb: "From your phone",
-      src: url,
-      position: placementFromAim(i, total),
-      objectUrl: url,
-      deletable: true,
-    };
-    const node = createNode(item, index);
-    state.nodes.push(node);
-    added += 1;
-  }
-
-  if (!silent) {
-    setStatus(
-      added === 1
-        ? "Placed where you’re aiming — tap × to remove"
-        : `${added} videos placed along your aim — tap × to remove`
-    );
-  }
-  return added;
+  state.nameQueue.push(...files);
+  processNameQueue();
+  return files.length;
 }
 
 function onPickVideos(event) {

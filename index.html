@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=7" />
+    <link rel="stylesheet" href="styles.css?v=9" />
   </head>
   <body>
     <div id="app">
@@ -29,7 +29,7 @@
           <p class="brand">Lumen</p>
           <h1 class="headline">Watch videos in the world around you.</h1>
           <p class="support">
-            Point your camera. Videos stay fixed in space — turn to look, aim, and tap to watch.
+            Name a clip, pin it to GPS, and rediscover it within 25 feet from any direction.
           </p>
           <div class="cta-row">
             <button type="button" id="enter-btn" class="cta">Open lens</button>
@@ -131,6 +131,30 @@
 
         <p id="status" class="status" role="status"></p>
       </section>
+
+      <div id="name-modal" class="name-modal" hidden>
+        <form id="name-form" class="name-panel">
+          <p class="name-brand">Lumen</p>
+          <h2 class="name-title">Name this video</h2>
+          <p class="name-file" id="name-file"></p>
+          <input
+            id="name-input"
+            class="name-input"
+            type="text"
+            maxlength="80"
+            placeholder="e.g. Front porch clip"
+            required
+            autocomplete="off"
+          />
+          <div class="name-actions">
+            <button type="button" id="name-cancel" class="ghost-btn">Cancel</button>
+            <button type="submit" class="cta name-submit">Pin here</button>
+          </div>
+          <p class="name-hint">
+            Visible when you’re within 25 feet and aim at it from any direction.
+          </p>
+        </form>
+      </div>
     </div>
 
     <script type="importmap">
@@ -140,6 +164,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=7"></script>
+    <script type="module" src="app.js?v=9"></script>
   </body>
 </html>
