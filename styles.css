@@ -137,10 +137,6 @@ button {
   border: 1px solid var(--line);
 }
 
-.cta-secondary:hover {
-  background: rgba(238, 247, 240, 0.08);
-}
-
 .cta:active {
   transform: scale(0.97);
 }
