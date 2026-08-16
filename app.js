@@ -334,11 +334,40 @@ function removeNode(node) {
 function updateDeleteControls() {
   const canDelete = Boolean(state.focused?.deletable) && !state.watching;
   deleteBtn.hidden = !canDelete;
+  if (!canDelete) {
+    deleteBtn.style.visibility = "hidden";
+  }
   if (state.watching && state.focused?.deletable) {
     theaterDelete.hidden = false;
   } else if (!state.watching) {
     theaterDelete.hidden = true;
   }
+}
+
+/** Pin the × to the focused video's top-right corner in screen space. */
+function positionDeleteBtn() {
+  const node = state.focused;
+  if (!node?.deletable || state.watching || deleteBtn.hidden || !camera) {
+    return;
+  }
+
+  const w = (node.screen.geometry.parameters?.width ?? 2.4) * 0.5;
+  const h = (node.screen.geometry.parameters?.height ?? 1.35) * 0.5;
+  // Slightly outside the frame corner so it sits on the green border TR
+  _corner.set(w + 0.02, h + 0.02, 0.04);
+  node.screen.localToWorld(_corner);
+  _corner.project(camera);
+
+  if (_corner.z > 1) {
+    deleteBtn.style.visibility = "hidden";
+    return;
+  }
+
+  const x = (_corner.x * 0.5 + 0.5) * window.innerWidth;
+  const y = (-_corner.y * 0.5 + 0.5) * window.innerHeight;
+  deleteBtn.style.visibility = "visible";
+  deleteBtn.style.left = `${x}px`;
+  deleteBtn.style.top = `${y}px`;
 }
 
 function buildScene() {
@@ -712,6 +741,7 @@ function animate() {
     if (node !== state.focused) setFocus(node);
   }
 
+  positionDeleteBtn();
   renderer.render(scene, camera);
 }
 
