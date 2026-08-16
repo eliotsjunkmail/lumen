@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=9" />
+    <link rel="stylesheet" href="styles.css?v=10" />
   </head>
   <body>
     <div id="app">
@@ -41,6 +41,14 @@
               accept="video/*"
               multiple
             />
+          </div>
+          <div id="location-prompt" class="location-prompt" role="status">
+            <p class="location-copy" id="location-copy">
+              Lumen needs your location to pin videos within 25 feet.
+            </p>
+            <button type="button" id="location-btn" class="location-btn">
+              Enable location
+            </button>
           </div>
           <p class="upload-note" id="upload-note" hidden></p>
         </div>
@@ -164,6 +172,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=9"></script>
+    <script type="module" src="app.js?v=10"></script>
   </body>
 </html>

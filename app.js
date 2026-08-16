@@ -65,6 +65,9 @@ const nameForm = document.getElementById("name-form");
 const nameInput = document.getElementById("name-input");
 const nameFile = document.getElementById("name-file");
 const nameCancel = document.getElementById("name-cancel");
+const locationPrompt = document.getElementById("location-prompt");
+const locationCopy = document.getElementById("location-copy");
+const locationBtn = document.getElementById("location-btn");
 
 const state = {
   offsetYaw: 0,
@@ -157,6 +160,95 @@ function readGps() {
     );
   });
 }
+
+function setLocationUi(kind, message) {
+  if (!locationPrompt) return;
+  locationPrompt.classList.remove("is-ready", "is-denied");
+  if (kind === "ready") locationPrompt.classList.add("is-ready");
+  if (kind === "denied") locationPrompt.classList.add("is-denied");
+  if (locationCopy) locationCopy.textContent = message;
+  if (locationBtn) {
+    locationBtn.disabled = kind === "ready" || kind === "pending";
+    if (kind === "pending") locationBtn.textContent = "Checking…";
+    else if (kind === "denied") locationBtn.textContent = "Try again";
+    else if (kind === "ready") locationBtn.textContent = "Location on";
+    else locationBtn.textContent = "Enable location";
+  }
+}
+
+async function requestLocationAccess({ interactive = false } = {}) {
+  if (!navigator.geolocation) {
+    setLocationUi("denied", "This phone doesn’t support location.");
+    return null;
+  }
+
+  setLocationUi(
+    "pending",
+    interactive
+      ? "Allow location when your phone asks…"
+      : "Checking location access…"
+  );
+
+  try {
+    const geo = await readGps();
+    state.userGeo = geo;
+    state.originGeo = state.originGeo || { ...geo };
+    startGeoWatch();
+    updateGeoAnchors();
+    setLocationUi(
+      "ready",
+      "Location on — pins work within 25 feet of where you stand."
+    );
+    return geo;
+  } catch (err) {
+    console.warn(err);
+    const denied =
+      err && (err.code === 1 || /denied/i.test(String(err.message || "")));
+    setLocationUi(
+      "denied",
+      denied
+        ? "Location is blocked. Enable it in Settings, then tap Try again."
+        : "Couldn’t get location yet. Tap Enable location to allow access."
+    );
+    return null;
+  }
+}
+
+async function initLocationOnLoad() {
+  // Ask as soon as the app opens (HTTPS / GitHub Pages).
+  // If the browser requires a tap, the Enable location button is ready.
+  if (navigator.permissions?.query) {
+    try {
+      const status = await navigator.permissions.query({ name: "geolocation" });
+      if (status.state === "granted") {
+        await requestLocationAccess({ interactive: false });
+        return;
+      }
+      if (status.state === "denied") {
+        setLocationUi(
+          "denied",
+          "Location is blocked. Enable it for this site in your phone settings."
+        );
+        return;
+      }
+    } catch {
+      // Safari may not support permissions.query for geolocation
+    }
+  }
+
+  setLocationUi(
+    "ask",
+    "Lumen needs your location to pin videos within 25 feet."
+  );
+  // Attempt immediately on load; many mobile browsers will show the system prompt.
+  await requestLocationAccess({ interactive: false });
+}
+
+locationBtn?.addEventListener("click", () => {
+  requestLocationAccess({ interactive: true });
+});
+
+initLocationOnLoad();
 
 function startGeoWatch() {
   if (!navigator.geolocation || state.geoWatchId != null) return;
