@@ -1,15 +1,4 @@
 import * as THREE from "three";
-import {
-  cloudConfigured,
-  initCloud,
-  currentUid,
-  publishSpot,
-  fetchSpots,
-  deleteSpot,
-  distanceMeters,
-  enuFromOrigin,
-  offsetLatLng,
-} from "./cloud.js";
 
 const CATALOG = [
   {
@@ -68,13 +57,6 @@ const videoInputGate = document.getElementById("video-input-gate");
 const videoInputField = document.getElementById("video-input-field");
 const deleteBtn = document.getElementById("delete-btn");
 const theaterDelete = document.getElementById("theater-delete");
-const nameModal = document.getElementById("name-modal");
-const nameForm = document.getElementById("name-form");
-const nameInput = document.getElementById("name-input");
-const nameFile = document.getElementById("name-file");
-const nameCancel = document.getElementById("name-cancel");
-const nameHint = document.getElementById("name-hint");
-const nameConfirm = document.getElementById("name-confirm");
 
 const state = {
   offsetYaw: 0,
@@ -88,12 +70,7 @@ const state = {
   booting: false,
   booted: false,
   pendingUploads: [],
-  nameQueue: [],
-  naming: false,
   uploadCount: 0,
-  originGeo: null,
-  geoWatchId: null,
-  cloudSpotIds: new Set(),
   nodes: [],
   clock: new THREE.Clock(),
   hasGyro: false,
@@ -343,258 +320,15 @@ function disposeNode(node) {
 
 function removeNode(node) {
   if (!node?.deletable) return;
-  const doomed = node;
 
-  if (state.watchingNode === doomed) closeTheaterMode();
-  disposeNode(doomed);
-  state.nodes = state.nodes.filter((n) => n !== doomed);
-  if (doomed.cloudId) state.cloudSpotIds.delete(doomed.cloudId);
+  if (state.watchingNode === node) closeTheaterMode();
+  disposeNode(node);
+  state.nodes = state.nodes.filter((n) => n !== node);
 
-  if (state.focused === doomed) setFocus(null);
+  if (state.focused === node) setFocus(null);
   else updateDeleteControls();
 
-  setStatus(`Removed ${doomed.title}`);
-
-  if (doomed.cloudId && cloudConfigured()) {
-    deleteSpot({
-      id: doomed.cloudId,
-      uid: doomed.uid,
-      storagePath: doomed.storagePath,
-    }).catch((err) => {
-      console.error(err);
-      setStatus(err.message || "Cloud delete failed", 4200);
-    });
-  }
-}
-
-function readGps() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("Location unavailable on this device"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        resolve({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        }),
-      reject,
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 }
-    );
-  });
-}
-
-async function ensureOriginGeo() {
-  if (state.originGeo) return state.originGeo;
-  const geo = await readGps();
-  state.originGeo = geo;
-  return geo;
-}
-
-function aimMetersOnGround(distance = 4) {
-  if (!camera) return { east: 0, north: distance };
-  camera.getWorldDirection(_forward);
-  const flat = new THREE.Vector3(_forward.x, 0, _forward.z);
-  if (flat.lengthSq() < 0.0001) flat.set(0, 0, -1);
-  flat.normalize().multiplyScalar(distance);
-  // +X east, -Z north in our ENU mapping
-  return { east: flat.x, north: -flat.z };
-}
-
-function localPositionFromGeo(lat, lng) {
-  if (!state.originGeo) {
-    return placementFromAim(0, 1);
-  }
-  const enu = enuFromOrigin(
-    state.originGeo.lat,
-    state.originGeo.lng,
-    lat,
-    lng
-  );
-  return [enu.x, 1.4, enu.z];
-}
-
-function openNameModal(file) {
-  return new Promise((resolve) => {
-    state.naming = true;
-    nameFile.textContent = file.name || "Video";
-    nameInput.value = titleFromFile(file, state.uploadCount + 1);
-    nameHint.textContent = cloudConfigured()
-      ? "Saved at your GPS pin — anyone nearby can discover it."
-      : "Name it now. Add Firebase config to share with everyone.";
-    nameModal.hidden = false;
-    nameConfirm.disabled = false;
-    nameConfirm.textContent = "Place in world";
-    requestAnimationFrame(() => {
-      nameInput.focus();
-      nameInput.select();
-    });
-
-    const cleanup = () => {
-      nameForm.removeEventListener("submit", onSubmit);
-      nameCancel.removeEventListener("click", onCancel);
-      nameModal.hidden = true;
-      state.naming = false;
-    };
-
-    const onCancel = () => {
-      cleanup();
-      resolve(null);
-    };
-
-    const onSubmit = (e) => {
-      e.preventDefault();
-      const name = nameInput.value.trim().slice(0, 80);
-      if (!name) return;
-      cleanup();
-      resolve(name);
-    };
-
-    nameForm.addEventListener("submit", onSubmit);
-    nameCancel.addEventListener("click", onCancel);
-  });
-}
-
-async function placeNamedVideo(file, name, { silent = false } = {}) {
-  state.uploadCount += 1;
-  const localUrl = URL.createObjectURL(file);
-
-  let geo = null;
-  try {
-    geo = await ensureOriginGeo();
-  } catch (err) {
-    console.warn(err);
-    if (cloudConfigured()) {
-      if (!silent) setStatus("Location needed to share videos in the world", 4200);
-      URL.revokeObjectURL(localUrl);
-      throw err;
-    }
-  }
-
-  let pinned;
-  let position;
-  if (geo) {
-    const aim = aimMetersOnGround(4);
-    pinned = offsetLatLng(geo.lat, geo.lng, aim.east, aim.north);
-    position = localPositionFromGeo(pinned.lat, pinned.lng);
-  } else {
-    pinned = null;
-    position = placementFromAim(0, 1);
-    if (!silent) setStatus("No GPS — placed in front of you on this phone only", 4200);
-  }
-
-  let cloudMeta = null;
-  if (cloudConfigured()) {
-    if (!silent) setStatus("Uploading to the shared world…");
-    try {
-      cloudMeta = await publishSpot({
-        file,
-        name,
-        lat: pinned.lat,
-        lng: pinned.lng,
-        heading: state.orientReady ? state.offsetYaw : 0,
-      });
-    } catch (err) {
-      console.error(err);
-      if (!silent) {
-        setStatus(
-          err.message || "Cloud upload failed — placing on this phone only",
-          4500
-        );
-      }
-    }
-  }
-
-  const item = {
-    id: cloudMeta?.id || `upload-${state.uploadCount}`,
-    title: name,
-    blurb: cloudMeta ? "Shared world pin" : "On this phone",
-    src: cloudMeta?.videoUrl || localUrl,
-    position,
-    objectUrl: cloudMeta ? null : localUrl,
-    deletable: true,
-    cloudId: cloudMeta?.id || null,
-    storagePath: cloudMeta?.storagePath || null,
-    uid: cloudMeta?.uid || currentUid(),
-    lat: pinned.lat,
-    lng: pinned.lng,
-  };
-
-  if (cloudMeta?.videoUrl) URL.revokeObjectURL(localUrl);
-
-  const node = createNode(item, state.nodes.length);
-  state.nodes.push(node);
-  if (cloudMeta?.id) state.cloudSpotIds.add(cloudMeta.id);
-
-  if (!silent) {
-    setStatus(
-      cloudMeta
-        ? `“${name}” is live for anyone nearby`
-        : `“${name}” placed here (cloud not connected)`
-    );
-  }
-  return node;
-}
-
-async function processNameQueue() {
-  if (state.naming) return;
-  while (state.nameQueue.length) {
-    if (!state.booted || !scene) break;
-    const file = state.nameQueue.shift();
-    const name = await openNameModal(file);
-    if (!name) continue;
-    try {
-      await placeNamedVideo(file, name);
-    } catch (err) {
-      console.error(err);
-    }
-  }
-  updateUploadNote(state.nameQueue.length + state.pendingUploads.length);
-}
-
-async function loadCloudSpots() {
-  if (!cloudConfigured()) return;
-  try {
-    await initCloud();
-    await ensureOriginGeo();
-    const spots = await fetchSpots(250);
-    const origin = state.originGeo;
-    let added = 0;
-    for (const spot of spots) {
-      if (!spot?.videoUrl || spot.lat == null || spot.lng == null) continue;
-      if (state.cloudSpotIds.has(spot.id)) continue;
-      const dist = distanceMeters(origin.lat, origin.lng, spot.lat, spot.lng);
-      if (dist > 2500) continue; // ~1.5 miles
-
-      const position = localPositionFromGeo(spot.lat, spot.lng);
-      const mine = spot.uid && spot.uid === currentUid();
-      const node = createNode(
-        {
-          id: spot.id,
-          title: spot.name || "Untitled",
-          blurb: dist < 40 ? "Right here" : `${Math.round(dist)}m away`,
-          src: spot.videoUrl,
-          position,
-          deletable: Boolean(mine),
-          cloudId: spot.id,
-          storagePath: spot.storagePath || null,
-          uid: spot.uid,
-          lat: spot.lat,
-          lng: spot.lng,
-        },
-        state.nodes.length
-      );
-      state.nodes.push(node);
-      state.cloudSpotIds.add(spot.id);
-      added += 1;
-    }
-    if (added) setStatus(`Loaded ${added} nearby world video${added > 1 ? "s" : ""}`);
-  } catch (err) {
-    console.error(err);
-    setStatus("Could not load shared world videos", 4200);
-  }
+  setStatus(`Removed ${node.title}`);
 }
 
 function updateDeleteControls() {
@@ -672,6 +406,23 @@ function buildScene() {
   scene.add(ground);
 
   state.nodes = CATALOG.map((item, index) => createNode(item, index));
+
+  if (state.pendingUploads.length) {
+    const pending = state.pendingUploads.splice(0, state.pendingUploads.length);
+    const placePending = () => {
+      addUploadedFiles(pending, { silent: true });
+      updateUploadNote(0);
+      setStatus("Your videos were placed where the lens opened");
+    };
+    // Wait briefly for gyro so placement matches phone orientation
+    let tries = 0;
+    const wait = () => {
+      tries += 1;
+      if (state.orientReady || tries > 50) placePending();
+      else requestAnimationFrame(wait);
+    };
+    requestAnimationFrame(wait);
+  }
 }
 
 function getScreenOrientRad() {
@@ -1021,27 +772,10 @@ function bootField(message) {
 
   if (renderer) animate();
   setStatus(message);
+  // Re-kick camera playback now that the video is visible (helps iOS)
   if (camEl.srcObject) {
     camEl.play().catch(() => {});
   }
-
-  // Move any gate-selected files into the naming queue
-  if (state.pendingUploads.length) {
-    state.nameQueue.push(...state.pendingUploads.splice(0));
-    updateUploadNote(0);
-  }
-
-  // GPS + shared world, then name/place queued uploads
-  (async () => {
-    try {
-      await ensureOriginGeo();
-    } catch (err) {
-      console.warn(err);
-      setStatus("Enable location to pin & discover world videos", 4500);
-    }
-    await loadCloudSpots();
-    await processNameQueue();
-  })();
 }
 
 async function enterField() {
@@ -1066,18 +800,13 @@ async function enterField() {
   bootField(
     cameraOk
       ? motionOk
-        ? "Turn to look — shared videos stay pinned in the world"
+        ? "Turn your phone — videos stay fixed in space"
         : "Motion blocked — drag to look around"
       : "Camera blocked — drag to explore demo videos"
   );
 
   if (!motionOk) {
     setStatus("Allow motion access for world-locked AR", 4200);
-  }
-  if (!cloudConfigured()) {
-    setTimeout(() => {
-      setStatus("Cloud sharing needs Firebase — see README", 5000);
-    }, 2600);
   }
   state.booting = false;
 }
@@ -1105,8 +834,8 @@ function updateUploadNote(count) {
   uploadNote.hidden = false;
   uploadNote.textContent =
     count === 1
-      ? "1 video selected — Open lens, then name it"
-      : `${count} videos selected — Open lens, then name them`;
+      ? "1 video ready — Open lens to place it in AR"
+      : `${count} videos ready — Open lens to place them in AR`;
 }
 
 function addUploadedFiles(fileList, { silent = false } = {}) {
@@ -1116,23 +845,49 @@ function addUploadedFiles(fileList, { silent = false } = {}) {
     return 0;
   }
 
-  // Always name videos before placing
+  // Before the field boots, queue for later (placed along aim when lens opens)
   if (!state.booted || !scene) {
     state.pendingUploads.push(...files);
     updateUploadNote(state.pendingUploads.length);
     if (!silent) {
       setStatus(
         files.length === 1
-          ? "Video selected — Open lens to name & place"
-          : `${files.length} videos selected — Open lens to name & place`
+          ? "Video added — tap Open lens"
+          : `${files.length} videos added — tap Open lens`
       );
     }
     return files.length;
   }
 
-  state.nameQueue.push(...files);
-  processNameQueue();
-  return files.length;
+  let added = 0;
+  const total = files.length;
+  for (let i = 0; i < files.length; i += 1) {
+    const file = files[i];
+    state.uploadCount += 1;
+    const index = state.nodes.length;
+    const url = URL.createObjectURL(file);
+    const item = {
+      id: `upload-${state.uploadCount}`,
+      title: titleFromFile(file, state.uploadCount),
+      blurb: "From your phone",
+      src: url,
+      position: placementFromAim(i, total),
+      objectUrl: url,
+      deletable: true,
+    };
+    const node = createNode(item, index);
+    state.nodes.push(node);
+    added += 1;
+  }
+
+  if (!silent) {
+    setStatus(
+      added === 1
+        ? "Placed where you’re aiming — tap × to remove"
+        : `${added} videos placed along your aim — tap × to remove`
+    );
+  }
+  return added;
 }
 
 function onPickVideos(event) {

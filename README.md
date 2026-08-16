@@ -1,6 +1,6 @@
 # Lumen
 
-Camera AR video field — pin named videos in the real world with GPS. Anyone nearby can discover them.
+Camera-based AR video field — see the world through your lens with watchable screens floating in space (Pokémon Go + Spectacles energy, focused on watching).
 
 ## Open locally
 
@@ -8,32 +8,21 @@ Camera AR video field — pin named videos in the real world with GPS. Anyone ne
 npx --yes serve .
 ```
 
-Allow **camera**, **motion**, and **location** when prompted.
+Then open the printed URL (usually http://localhost:3000). Allow camera access when prompted.
 
 ## Use
 
-1. **Open lens**
-2. **Add** a video from your phone
-3. Give it a **name**
-4. It’s pinned where you’re standing/aiming (GPS)
-5. Others nearby load the same shared pins
-6. Aim at your upload and tap **×** to delete
+1. Tap **Open lens**
+2. Drag (or tilt the phone) to look around
+3. Aim at a floating video screen
+4. Tap **Watch** (or the screen) to play in the theater overlay
+5. **Back to field** returns you to AR scanning
 
-## Shared world (Firebase)
-
-Uploads persist for everyone through Firebase Anonymous Auth + Storage + Firestore.
-
-1. Create a project at https://console.firebase.google.com  
-2. Add a **Web** app and copy the config into `config.js`  
-3. Authentication → enable **Anonymous**  
-4. Create **Firestore** and paste `firestore.rules`  
-5. Create **Storage** and paste `storage.rules`  
-6. Redeploy / refresh the site  
-
-Until `config.js` is filled, naming + local placement still work on your phone, but other people won’t see your uploads.
+Demo clips live in `media/` as spatial video textures.
 
 ## Notes
 
-- Best on a phone with rear camera + HTTPS (GitHub Pages is fine)
-- Nearby radius is about 2.5 km
-- Demo starter clips are local-only and not shared
+- Best on a phone with rear camera + HTTPS (or localhost)
+- If camera permission is denied, the AR field still works over a dark backdrop
+- iOS may ask for motion permission for tilt look
+- Arrow keys also pan the look direction on desktop
