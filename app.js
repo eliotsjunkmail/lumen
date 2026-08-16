@@ -55,6 +55,8 @@ const closeTheater = document.getElementById("close-theater");
 const uploadNote = document.getElementById("upload-note");
 const videoInputGate = document.getElementById("video-input-gate");
 const videoInputField = document.getElementById("video-input-field");
+const deleteBtn = document.getElementById("delete-btn");
+const theaterDelete = document.getElementById("theater-delete");
 
 const state = {
   offsetYaw: 0,
@@ -63,6 +65,7 @@ const state = {
   lastX: 0,
   lastY: 0,
   focused: null,
+  watchingNode: null,
   watching: false,
   booting: false,
   booted: false,
@@ -89,6 +92,9 @@ const _offsetQuat = new THREE.Quaternion();
 const _targetQuat = new THREE.Quaternion();
 const _forward = new THREE.Vector3();
 const _to = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _place = new THREE.Vector3();
+const _worldUp = new THREE.Vector3(0, 1, 0);
 
 function setStatus(message, ms = 2800) {
   statusEl.textContent = message;
@@ -156,9 +162,63 @@ function nextRingPosition(index) {
   return [Math.sin(angle) * radius, y, -Math.cos(angle) * radius];
 }
 
+/** Place along the current camera aim — where the phone is pointed when adding. */
+function placementFromAim(spreadIndex = 0, spreadCount = 1) {
+  if (!camera) return nextRingPosition(spreadIndex);
+
+  camera.getWorldDirection(_forward);
+  if (_forward.lengthSq() < 0.0001) _forward.set(0, 0, -1);
+
+  _right.crossVectors(_forward, _worldUp);
+  if (_right.lengthSq() < 0.0001) {
+    _right.set(1, 0, 0);
+  } else {
+    _right.normalize();
+  }
+
+  const distance = 3.8;
+  const spread = (spreadIndex - (spreadCount - 1) / 2) * 1.35;
+  _place
+    .copy(camera.position)
+    .addScaledVector(_forward, distance)
+    .addScaledVector(_right, spread);
+
+  // Keep screens near eye height if the user is aiming almost flat
+  if (Math.abs(_forward.y) < 0.35) {
+    _place.y = camera.position.y + spreadIndex * 0.05;
+  }
+
+  return [_place.x, _place.y, _place.z];
+}
+
 function titleFromFile(file, fallbackIndex) {
   const base = (file.name || `Video ${fallbackIndex}`).replace(/\.[^.]+$/, "");
   return base.slice(0, 28) || `Video ${fallbackIndex}`;
+}
+
+function applyVideoAspect(node) {
+  const w = node.video.videoWidth || 16;
+  const h = node.video.videoHeight || 9;
+  if (w < 2 || h < 2) return;
+
+  const aspect = w / h;
+  const portrait = aspect < 1;
+  // Match recorded orientation: tall phone clips stay portrait planes
+  const base = portrait ? 2.05 : 1.35;
+  const height = portrait ? base : base;
+  const width = height * aspect;
+  const maxW = portrait ? 1.55 : 2.8;
+  const finalW = Math.min(width, maxW);
+  const finalH = finalW / aspect;
+
+  node.screen.geometry.dispose();
+  node.screen.geometry = new THREE.PlaneGeometry(finalW, finalH);
+  node.frame.geometry.dispose();
+  node.frame.geometry = new THREE.PlaneGeometry(finalW + 0.14, finalH + 0.14);
+  node.label.position.set(0, finalH * 0.5 + 0.55, 0.02);
+  node.beacon.position.set(0, -finalH * 0.5 - 0.35, 0.05);
+  node.screen.position.y = 0;
+  node.frame.position.y = 0;
 }
 
 function createNode(item, index) {
@@ -211,11 +271,13 @@ function createNode(item, index) {
   radar.className = "radar-dot";
   radarDots.appendChild(radar);
 
-  return {
+  const node = {
     ...item,
+    deletable: Boolean(item.deletable),
     group,
     screen,
     frame,
+    label,
     beacon,
     video,
     texture,
@@ -224,6 +286,58 @@ function createNode(item, index) {
     phase: index * 1.1,
     previewing: false,
   };
+
+  const onMeta = () => applyVideoAspect(node);
+  if (video.readyState >= 1) onMeta();
+  else video.addEventListener("loadedmetadata", onMeta, { once: true });
+
+  return node;
+}
+
+function disposeNode(node) {
+  scene.remove(node.group);
+  node.radar?.remove();
+  try {
+    node.video.pause();
+  } catch {
+    /* ignore */
+  }
+  node.video.removeAttribute("src");
+  node.video.load();
+  if (node.objectUrl) URL.revokeObjectURL(node.objectUrl);
+  node.texture?.dispose();
+  node.screen.geometry.dispose();
+  node.frame.geometry.dispose();
+  node.label.geometry.dispose();
+  node.beacon.geometry.dispose();
+  node.screen.material.dispose();
+  node.frame.material.dispose();
+  node.label.material.map?.dispose();
+  node.label.material.dispose();
+  node.beacon.material.dispose();
+}
+
+function removeNode(node) {
+  if (!node?.deletable) return;
+
+  if (state.watchingNode === node) closeTheaterMode();
+  disposeNode(node);
+  state.nodes = state.nodes.filter((n) => n !== node);
+
+  if (state.focused === node) setFocus(null);
+  else updateDeleteControls();
+
+  setStatus(`Removed ${node.title}`);
+}
+
+function updateDeleteControls() {
+  const canDelete = Boolean(state.focused?.deletable) && !state.watching;
+  deleteBtn.hidden = !canDelete;
+  if (state.watching && state.focused?.deletable) {
+    theaterDelete.hidden = false;
+  } else if (!state.watching) {
+    theaterDelete.hidden = true;
+  }
 }
 
 function buildScene() {
@@ -263,10 +377,21 @@ function buildScene() {
 
   state.nodes = CATALOG.map((item, index) => createNode(item, index));
 
-  // Apply any videos picked on the gate before entering
   if (state.pendingUploads.length) {
-    addUploadedFiles(state.pendingUploads, { silent: true });
-    state.pendingUploads = [];
+    const pending = state.pendingUploads.splice(0, state.pendingUploads.length);
+    const placePending = () => {
+      addUploadedFiles(pending, { silent: true });
+      updateUploadNote(0);
+      setStatus("Your videos were placed where the lens opened");
+    };
+    // Wait briefly for gyro so placement matches phone orientation
+    let tries = 0;
+    const wait = () => {
+      tries += 1;
+      if (state.orientReady || tries > 50) placePending();
+      else requestAnimationFrame(wait);
+    };
+    requestAnimationFrame(wait);
   }
 }
 
@@ -403,29 +528,36 @@ function setFocus(node) {
     watchBtn.disabled = true;
     pausePreviews(null);
   }
+  updateDeleteControls();
 }
 
 function openTheater(node) {
   if (!node) return;
   state.watching = true;
+  state.watchingNode = node;
   pausePreviews(null);
   field.classList.add("is-watching");
   theater.hidden = false;
   theaterTitle.textContent = node.title;
+  theaterDelete.hidden = !node.deletable;
   theaterVideo.src = node.src;
   theaterVideo.muted = false;
   theaterVideo.play().catch(() => setStatus("Tap play on the video to start"));
   setStatus(`Watching ${node.title}`);
+  updateDeleteControls();
 }
 
 function closeTheaterMode() {
   state.watching = false;
+  state.watchingNode = null;
   field.classList.remove("is-watching");
   theater.hidden = true;
+  theaterDelete.hidden = true;
   theaterVideo.pause();
   theaterVideo.removeAttribute("src");
   theaterVideo.load();
   if (state.focused) ensurePreview(state.focused);
+  updateDeleteControls();
 }
 
 async function startCamera() {
@@ -651,6 +783,15 @@ async function enterField() {
 enterBtn.addEventListener("click", enterField);
 watchBtn.addEventListener("click", () => openTheater(state.focused));
 closeTheater.addEventListener("click", closeTheaterMode);
+deleteBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (state.focused?.deletable) removeNode(state.focused);
+});
+theaterDelete.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const node = state.watchingNode || state.focused;
+  if (node?.deletable) removeNode(node);
+});
 
 function updateUploadNote(count) {
   if (!uploadNote) return;
@@ -673,7 +814,7 @@ function addUploadedFiles(fileList, { silent = false } = {}) {
     return 0;
   }
 
-  // Before the field boots, queue for later
+  // Before the field boots, queue for later (placed along aim when lens opens)
   if (!state.booted || !scene) {
     state.pendingUploads.push(...files);
     updateUploadNote(state.pendingUploads.length);
@@ -688,7 +829,9 @@ function addUploadedFiles(fileList, { silent = false } = {}) {
   }
 
   let added = 0;
-  for (const file of files) {
+  const total = files.length;
+  for (let i = 0; i < files.length; i += 1) {
+    const file = files[i];
     state.uploadCount += 1;
     const index = state.nodes.length;
     const url = URL.createObjectURL(file);
@@ -697,8 +840,9 @@ function addUploadedFiles(fileList, { silent = false } = {}) {
       title: titleFromFile(file, state.uploadCount),
       blurb: "From your phone",
       src: url,
-      position: nextRingPosition(index),
+      position: placementFromAim(i, total),
       objectUrl: url,
+      deletable: true,
     };
     const node = createNode(item, index);
     state.nodes.push(node);
@@ -708,8 +852,8 @@ function addUploadedFiles(fileList, { silent = false } = {}) {
   if (!silent) {
     setStatus(
       added === 1
-        ? "Video placed in the field — look around"
-        : `${added} videos placed in the field — look around`
+        ? "Placed where you’re aiming — tap × to remove"
+        : `${added} videos placed along your aim — tap × to remove`
     );
   }
   return added;

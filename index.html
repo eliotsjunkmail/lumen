@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=6" />
   </head>
   <body>
     <div id="app">
@@ -76,6 +76,16 @@
           <span class="aim-corner aim-br"></span>
         </div>
 
+        <button
+          type="button"
+          id="delete-btn"
+          class="delete-btn"
+          hidden
+          aria-label="Delete this video"
+        >
+          ×
+        </button>
+
         <footer class="hud-bottom">
           <p class="watch-label" id="focus-label">Scan the field</p>
           <div class="hud-actions">
@@ -100,6 +110,15 @@
             <div class="theater-meta">
               <p class="theater-brand">Lumen</p>
               <p class="theater-title" id="theater-title">Untitled</p>
+              <button
+                type="button"
+                id="theater-delete"
+                class="theater-delete"
+                hidden
+                aria-label="Delete this video"
+              >
+                ×
+              </button>
             </div>
             <div class="theater-screen-wrap">
               <video id="theater-video" class="theater-video" playsinline controls></video>
@@ -121,6 +140,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=5"></script>
+    <script type="module" src="app.js?v=6"></script>
   </body>
 </html>

@@ -195,6 +195,7 @@ button {
 .hud-bottom,
 .radar,
 .aim,
+.delete-btn,
 .status,
 .theater {
   position: absolute;
@@ -410,6 +411,37 @@ button {
   border-top: 0;
 }
 
+.delete-btn {
+  top: calc(50% - 88px);
+  left: calc(50% + 28px);
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(6, 16, 12, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--foam);
+  font-size: 1.6rem;
+  line-height: 1;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transform: translate(-50%, -50%);
+}
+
+.delete-btn:active {
+  transform: translate(-50%, -50%) scale(0.94);
+  background: rgba(255, 90, 80, 0.85);
+}
+
+.field.is-watching .delete-btn {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .status {
   left: 50%;
   bottom: calc(110px + var(--safe-bottom));
@@ -464,9 +496,9 @@ button {
 }
 
 .theater-meta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
   gap: 10px;
 }
 
@@ -482,6 +514,23 @@ button {
   margin: 0;
   font-weight: 700;
   font-size: 0.95rem;
+  text-align: right;
+}
+
+.theater-delete {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(6, 16, 12, 0.72);
+  color: var(--foam);
+  font-size: 1.45rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.theater-delete:active {
+  background: rgba(255, 90, 80, 0.85);
 }
 
 .theater-screen-wrap {
