@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=3" />
   </head>
   <body>
     <div id="app">
@@ -38,7 +38,14 @@
       </section>
 
       <section id="field" class="field" hidden aria-label="AR video field">
-        <video id="cam" class="cam" playsinline muted autoplay></video>
+        <video
+          id="cam"
+          class="cam"
+          playsinline
+          webkit-playsinline
+          muted
+          autoplay
+        ></video>
         <canvas id="stage" class="stage"></canvas>
 
         <header class="hud-top">
@@ -89,11 +96,10 @@
     <script type="importmap">
       {
         "imports": {
-          "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
-          "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+          "three": "./vendor/three.module.js"
         }
       }
     </script>
-    <script type="module" src="app.js"></script>
+    <script type="module" src="app.js?v=3"></script>
   </body>
 </html>

@@ -63,6 +63,8 @@ const state = {
   lastY: 0,
   focused: null,
   watching: false,
+  booting: false,
+  booted: false,
   nodes: [],
   clock: new THREE.Clock(),
 };
@@ -360,22 +362,54 @@ async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("Camera API unavailable in this browser");
   }
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: {
-      facingMode: { ideal: "environment" },
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-    },
-  });
+
+  camEl.setAttribute("playsinline", "");
+  camEl.setAttribute("webkit-playsinline", "");
+  camEl.muted = true;
+  camEl.autoplay = true;
+  camEl.playsInline = true;
+
+  const attempts = [
+    { audio: false, video: { facingMode: "environment" } },
+    { audio: false, video: { facingMode: { ideal: "environment" } } },
+    { audio: false, video: true },
+  ];
+
+  let stream = null;
+  let lastError = null;
+  for (const constraints of attempts) {
+    try {
+      stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia(constraints),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Camera request timed out")), 8000)
+        ),
+      ]);
+      break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  if (!stream) throw lastError || new Error("Could not open camera");
+
   camEl.srcObject = stream;
-  await camEl.play();
+  // iOS can hang forever on await video.play() — never block the field on it
+  try {
+    const playPromise = camEl.play();
+    if (playPromise && typeof playPromise.then === "function") {
+      await Promise.race([
+        playPromise,
+        new Promise((resolve) => setTimeout(resolve, 1200)),
+      ]);
+    }
+  } catch {
+    // Autoplay quirks — stream is still attached; frames usually appear anyway
+  }
 }
 
 function enableOrientation() {
   const handler = (event) => {
     if (state.dragging || state.watching) return;
-    // alpha: z, beta: x, gamma: y
     if (event.alpha == null || event.beta == null) return;
     const yaw = THREE.MathUtils.degToRad(event.alpha);
     const pitch = THREE.MathUtils.degToRad(event.beta - 90);
@@ -389,12 +423,15 @@ function enableOrientation() {
   ) {
     DeviceOrientationEvent.requestPermission()
       .then((res) => {
-        if (res === "granted") window.addEventListener("deviceorientation", handler);
-        else setStatus("Drag to look — motion permission denied");
+        if (res === "granted") {
+          window.addEventListener("deviceorientation", handler, true);
+        } else {
+          setStatus("Drag to look — motion permission denied");
+        }
       })
-      .catch(() => setStatus("Drag to look around"));
+      .catch(() => setStatus("Drag with your finger to look around"));
   } else {
-    window.addEventListener("deviceorientation", handler);
+    window.addEventListener("deviceorientation", handler, true);
   }
 }
 
@@ -456,28 +493,61 @@ function animate() {
 }
 
 function bootField(message) {
-  buildScene();
+  if (state.booted) {
+    setStatus(message);
+    return;
+  }
+  state.booted = true;
+
+  try {
+    buildScene();
+  } catch (err) {
+    console.error(err);
+    setStatus("3D view failed — try refreshing");
+  }
+
   bindLookControls();
   enableOrientation();
   window.addEventListener("resize", onResize);
+
   gate.hidden = true;
+  gate.setAttribute("aria-hidden", "true");
+  gate.style.display = "none";
   field.hidden = false;
-  animate();
+  field.removeAttribute("hidden");
+  field.style.display = "block";
+
+  if (renderer) animate();
   setStatus(message);
+  // Re-kick camera playback now that the video is visible (helps iOS)
+  if (camEl.srcObject) {
+    camEl.play().catch(() => {});
+  }
 }
 
 async function enterField() {
+  if (state.booting || state.booted) return;
+  state.booting = true;
   enterBtn.disabled = true;
   enterBtn.textContent = "Opening…";
+
+  let cameraOk = false;
   try {
     await startCamera();
-    bootField("Drag to look · aim at a screen · tap Watch");
+    cameraOk = true;
   } catch (err) {
     console.error(err);
     camEl.style.background =
       "radial-gradient(circle at 30% 20%, #1a3a2a, #06100c 60%)";
-    bootField("Camera blocked — drag to explore demo videos");
   }
+
+  // Always enter the field — never leave the user stuck on Opening…
+  bootField(
+    cameraOk
+      ? "Drag to look · aim at a screen · tap Watch"
+      : "Camera blocked — drag to explore demo videos"
+  );
+  state.booting = false;
 }
 
 enterBtn.addEventListener("click", enterField);

@@ -150,11 +150,15 @@ button {
 
 .cam {
   object-fit: cover;
+  object-position: center;
+  background: #020805;
+  z-index: 0;
   filter: saturate(1.08) contrast(1.05);
 }
 
 .stage {
   touch-action: none;
+  z-index: 1;
 }
 
 .hud-top,
