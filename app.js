@@ -57,10 +57,8 @@ const videoInputGate = document.getElementById("video-input-gate");
 const videoInputField = document.getElementById("video-input-field");
 
 const state = {
-  yaw: 0,
-  pitch: 0,
-  targetYaw: 0,
-  targetPitch: 0,
+  offsetYaw: 0,
+  offsetPitch: 0,
   dragging: false,
   lastX: 0,
   lastY: 0,
@@ -72,12 +70,25 @@ const state = {
   uploadCount: 0,
   nodes: [],
   clock: new THREE.Clock(),
+  hasGyro: false,
+  orientReady: false,
 };
 
 let renderer;
 let scene;
 let camera;
 let statusTimer;
+
+// Device-orientation → camera (Three.js DeviceOrientationControls math)
+const _zee = new THREE.Vector3(0, 0, 1);
+const _euler = new THREE.Euler();
+const _q0 = new THREE.Quaternion();
+const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -PI/2 on X
+const _deviceQuat = new THREE.Quaternion();
+const _offsetQuat = new THREE.Quaternion();
+const _targetQuat = new THREE.Quaternion();
+const _forward = new THREE.Vector3();
+const _to = new THREE.Vector3();
 
 function setStatus(message, ms = 2800) {
   statusEl.textContent = message;
@@ -259,13 +270,43 @@ function buildScene() {
   }
 }
 
-function updateCameraRig(dt) {
-  state.yaw += (state.targetYaw - state.yaw) * Math.min(1, dt * 10);
-  state.pitch += (state.targetPitch - state.pitch) * Math.min(1, dt * 10);
-  state.pitch = THREE.MathUtils.clamp(state.pitch, -0.85, 0.85);
+function getScreenOrientRad() {
+  const angle =
+    screen.orientation?.angle ??
+    (typeof window.orientation === "number" ? window.orientation : 0);
+  return THREE.MathUtils.degToRad(angle);
+}
 
-  const euler = new THREE.Euler(state.pitch, state.yaw, 0, "YXZ");
-  camera.quaternion.setFromEuler(euler);
+function setDeviceQuaternion(alphaDeg, betaDeg, gammaDeg) {
+  const alpha = THREE.MathUtils.degToRad(alphaDeg);
+  const beta = THREE.MathUtils.degToRad(betaDeg);
+  const gamma = THREE.MathUtils.degToRad(gammaDeg);
+  const orient = getScreenOrientRad();
+
+  // Device frame → world, then aim through the back camera
+  _euler.set(beta, alpha, -gamma, "YXZ");
+  _deviceQuat.setFromEuler(_euler);
+  _deviceQuat.multiply(_q1);
+  _deviceQuat.multiply(_q0.setFromAxisAngle(_zee, -orient));
+  state.orientReady = true;
+}
+
+function updateCameraRig(dt) {
+  _offsetQuat.setFromEuler(
+    new THREE.Euler(state.offsetPitch, state.offsetYaw, 0, "YXZ")
+  );
+
+  if (state.orientReady) {
+    // World-locked look: phone gyro drives the camera; drag is a small calibration offset
+    _targetQuat.copy(_deviceQuat).multiply(_offsetQuat);
+  } else {
+    // Desktop / no gyro: free-look from drag / keys only
+    _targetQuat.copy(_offsetQuat);
+  }
+
+  // Fast slerp keeps screens feeling glued in space while softening sensor noise
+  const blend = state.hasGyro ? Math.min(1, dt * 28) : Math.min(1, dt * 14);
+  camera.quaternion.slerp(_targetQuat, blend);
 }
 
 function updateNodes(t) {
@@ -278,7 +319,7 @@ function updateNodes(t) {
     node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
     node.radar.classList.toggle("is-hot", hot);
 
-    // Billboard-ish facing: keep screen facing viewer horizontally
+    // Billboard: keep screen facing viewer horizontally
     const dx = camera.position.x - node.group.position.x;
     const dz = camera.position.z - node.group.position.z;
     node.group.rotation.y = Math.atan2(dx, dz);
@@ -287,12 +328,14 @@ function updateNodes(t) {
 
 function updateRadar() {
   const radius = 34;
+  camera.getWorldDirection(_forward);
+  const yaw = Math.atan2(_forward.x, _forward.z);
+  const cos = Math.cos(-yaw);
+  const sin = Math.sin(-yaw);
+
   for (const node of state.nodes) {
     const dx = node.group.position.x - camera.position.x;
     const dz = node.group.position.z - camera.position.z;
-    // Rotate into view space using yaw
-    const cos = Math.cos(-state.yaw);
-    const sin = Math.sin(-state.yaw);
     const rx = dx * cos - dz * sin;
     const rz = dx * sin + dz * cos;
     const dist = Math.hypot(rx, rz) || 1;
@@ -325,17 +368,16 @@ function pausePreviews(exceptId) {
 
 function pickCenter() {
   // Aim-cone focus: closest screen near view center (Pokémon Go style lock-on)
-  const forward = new THREE.Vector3();
-  camera.getWorldDirection(forward);
+  camera.getWorldDirection(_forward);
   let best = null;
   let bestScore = Infinity;
 
   for (const node of state.nodes) {
-    const to = node.group.position.clone().sub(camera.position);
-    const dist = to.length();
+    _to.copy(node.group.position).sub(camera.position);
+    const dist = _to.length();
     if (dist < 0.4 || dist > 12) continue;
-    to.normalize();
-    const ang = Math.acos(THREE.MathUtils.clamp(forward.dot(to), -1, 1));
+    _to.normalize();
+    const ang = Math.acos(THREE.MathUtils.clamp(_forward.dot(_to), -1, 1));
     if (ang > 0.38) continue; // ~22 degrees
     const score = ang * 2.2 + dist * 0.08;
     if (score < bestScore) {
@@ -435,31 +477,49 @@ async function startCamera() {
   }
 }
 
-function enableOrientation() {
-  const handler = (event) => {
-    if (state.dragging || state.watching) return;
-    if (event.alpha == null || event.beta == null) return;
-    const yaw = THREE.MathUtils.degToRad(event.alpha);
-    const pitch = THREE.MathUtils.degToRad(event.beta - 90);
-    state.targetYaw = -yaw;
-    state.targetPitch = THREE.MathUtils.clamp(pitch, -0.85, 0.85);
-  };
-
+async function requestMotionPermission() {
   if (
     typeof DeviceOrientationEvent !== "undefined" &&
     typeof DeviceOrientationEvent.requestPermission === "function"
   ) {
-    DeviceOrientationEvent.requestPermission()
-      .then((res) => {
-        if (res === "granted") {
-          window.addEventListener("deviceorientation", handler, true);
-        } else {
-          setStatus("Drag to look — motion permission denied");
-        }
-      })
-      .catch(() => setStatus("Drag with your finger to look around"));
+    try {
+      const res = await DeviceOrientationEvent.requestPermission();
+      return res === "granted";
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+function enableOrientation() {
+  const onOrient = (event) => {
+    if (state.watching) return;
+    if (event.alpha == null || event.beta == null || event.gamma == null) return;
+    state.hasGyro = true;
+    setDeviceQuaternion(event.alpha, event.beta, event.gamma);
+  };
+
+  let listening = false;
+  const start = (type) => {
+    if (listening) return;
+    listening = true;
+    window.addEventListener(type, onOrient, true);
+  };
+
+  if ("ondeviceorientationabsolute" in window) {
+    const absHandler = (event) => {
+      window.removeEventListener("deviceorientationabsolute", absHandler, true);
+      start("deviceorientationabsolute");
+      onOrient(event);
+    };
+    window.addEventListener("deviceorientationabsolute", absHandler, true);
+    // Fallback if absolute never arrives (common on some phones)
+    setTimeout(() => {
+      if (!listening) start("deviceorientation");
+    }, 1200);
   } else {
-    window.addEventListener("deviceorientation", handler, true);
+    start("deviceorientation");
   }
 }
 
@@ -475,8 +535,10 @@ function bindLookControls() {
     const dy = y - state.lastY;
     state.lastX = x;
     state.lastY = y;
-    state.targetYaw -= dx * 0.005;
-    state.targetPitch -= dy * 0.004;
+    // Manual offset (desktop free-look, or gyro calibration nudge on phone)
+    state.offsetYaw -= dx * 0.005;
+    state.offsetPitch -= dy * 0.004;
+    state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -1.2, 1.2);
   };
   const onUp = () => {
     state.dragging = false;
@@ -559,6 +621,9 @@ async function enterField() {
   enterBtn.disabled = true;
   enterBtn.textContent = "Opening…";
 
+  // Ask for motion while still in the user-gesture turn (required on iOS)
+  const motionOk = await requestMotionPermission();
+
   let cameraOk = false;
   try {
     await startCamera();
@@ -569,12 +634,17 @@ async function enterField() {
       "radial-gradient(circle at 30% 20%, #1a3a2a, #06100c 60%)";
   }
 
-  // Always enter the field — never leave the user stuck on Opening…
   bootField(
     cameraOk
-      ? "Drag to look · aim at a screen · tap Watch"
+      ? motionOk
+        ? "Turn your phone — videos stay fixed in space"
+        : "Motion blocked — drag to look around"
       : "Camera blocked — drag to explore demo videos"
   );
+
+  if (!motionOk) {
+    setStatus("Allow motion access for world-locked AR", 4200);
+  }
   state.booting = false;
 }
 
@@ -658,10 +728,11 @@ videoInputField?.addEventListener("change", onPickVideos);
 window.addEventListener("keydown", (e) => {
   if (state.watching) return;
   const step = 0.08;
-  if (e.key === "ArrowLeft") state.targetYaw += step;
-  if (e.key === "ArrowRight") state.targetYaw -= step;
-  if (e.key === "ArrowUp") state.targetPitch += step * 0.7;
-  if (e.key === "ArrowDown") state.targetPitch -= step * 0.7;
+  if (e.key === "ArrowLeft") state.offsetYaw += step;
+  if (e.key === "ArrowRight") state.offsetYaw -= step;
+  if (e.key === "ArrowUp") state.offsetPitch += step * 0.7;
+  if (e.key === "ArrowDown") state.offsetPitch -= step * 0.7;
+  state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -1.2, 1.2);
   if (e.key === "Enter" && state.focused) openTheater(state.focused);
   if (e.key === "Escape") closeTheaterMode();
 });
