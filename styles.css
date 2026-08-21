@@ -388,11 +388,21 @@ button {
 }
 
 .radar-you {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--signal);
-  box-shadow: 0 0 12px rgba(198, 255, 74, 0.8);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 10px solid var(--signal);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: 0 0 10px rgba(198, 255, 74, 0.55);
+  /* Keep the arrow centered in the radar */
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: auto;
+  transform: translateY(-1px);
 }
 
 .radar-dot {
@@ -403,12 +413,42 @@ button {
   border-radius: 50%;
   background: var(--foam);
   box-shadow: 0 0 8px rgba(238, 247, 240, 0.55);
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
 }
 
-.radar-dot.is-hot {
+.radar-dot.is-hot,
+.radar-dot.is-ahead {
   background: var(--signal);
   transform: scale(1.25);
+  box-shadow: 0 0 10px rgba(198, 255, 74, 0.75);
+}
+
+.radar-dot--user {
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  background: rgba(6, 16, 12, 0.85);
+  border: 1.5px solid var(--foam);
+  color: var(--foam);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 8px rgba(198, 255, 74, 0.25);
+}
+
+.radar-dot--user::before {
+  content: "+";
+  transform: translateY(-0.5px);
+}
+
+.radar-dot--user.is-hot,
+.radar-dot--user.is-ahead {
+  border-color: var(--signal);
+  color: var(--signal);
+  background: rgba(6, 16, 12, 0.92);
+  transform: scale(1.12);
 }
 
 .aim {

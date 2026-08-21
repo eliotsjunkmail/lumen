@@ -512,7 +512,9 @@ function createNode(item, index) {
   scene.add(group);
 
   const radar = document.createElement("span");
-  radar.className = "radar-dot";
+  const isUserPin = Boolean(item.deletable || item.worldLocked);
+  radar.className = isUserPin ? "radar-dot radar-dot--user" : "radar-dot";
+  radar.title = isUserPin ? "Your recording" : item.title || "Video";
   radarDots.appendChild(radar);
 
   const node = {
@@ -721,22 +723,36 @@ function updateNodes(t) {
 
 function updateRadar() {
   const radius = 34;
+  const center = 42;
   camera.getWorldDirection(_forward);
+  // Heading from camera forward on XZ (radar "up" = look direction)
   const yaw = Math.atan2(_forward.x, _forward.z);
   const cos = Math.cos(-yaw);
   const sin = Math.sin(-yaw);
 
   for (const node of state.nodes) {
+    if (!node.radar || node.radar.style.display === "none") continue;
+
     const dx = node.group.position.x - camera.position.x;
     const dz = node.group.position.z - camera.position.z;
-    const rx = dx * cos - dz * sin;
-    const rz = dx * sin + dz * cos;
-    const dist = Math.hypot(rx, rz) || 1;
+    // Rotate into view space: +forward, +right
+    const right = dx * cos - dz * sin;
+    const forward = dx * sin + dz * cos;
+    const dist = Math.hypot(right, forward) || 1;
     const clamped = Math.min(dist / 6.5, 1);
-    const x = 42 + (rx / dist) * radius * clamped;
-    const y = 42 + (rz / dist) * radius * clamped;
+    // Screen: x right, y down — forward toward TOP, fix left/right mirror
+    const x = center - (right / dist) * radius * clamped;
+    const y = center - (forward / dist) * radius * clamped;
     node.radar.style.left = `${x}px`;
     node.radar.style.top = `${y}px`;
+
+    // Green when the clip is ahead / in the camera view cone
+    const ahead =
+      forward > 0.35 &&
+      Math.abs(right) < Math.max(0.55, forward * 0.75) &&
+      node.group.visible;
+    node.radar.classList.toggle("is-ahead", ahead && state.focused !== node);
+    node.radar.classList.toggle("is-hot", state.focused === node || ahead);
   }
 }
 
