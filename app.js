@@ -497,7 +497,9 @@ function createNode(item, index) {
   const label = new THREE.Mesh(
     new THREE.PlaneGeometry(2.2, 0.55),
     new THREE.MeshBasicMaterial({
-      map: createLabelTexture(item.title, item.blurb),
+      map: createLabelTexture(item.title, item.blurb, {
+        reserveDelete: Boolean(item.deletable),
+      }),
       transparent: true,
       side: THREE.DoubleSide,
     })
@@ -601,18 +603,17 @@ function updateDeleteControls() {
   }
 }
 
-/** Pin the × to the focused video's top-right corner in screen space. */
+/** Pin the × to the right side of the title label (red-circle spot). */
 function positionDeleteBtn() {
   const node = state.focused;
-  if (!node?.deletable || state.watching || deleteBtn.hidden || !camera) {
+  if (!node?.deletable || state.watching || deleteBtn.hidden || !camera || !node.label) {
     return;
   }
 
-  const w = (node.screen.geometry.parameters?.width ?? 2.4) * 0.5;
-  const h = (node.screen.geometry.parameters?.height ?? 1.35) * 0.5;
-  // Slightly outside the frame corner so it sits on the green border TR
-  _corner.set(w + 0.02, h + 0.02, 0.04);
-  node.screen.localToWorld(_corner);
+  const w = (node.label.geometry.parameters?.width ?? 2.2) * 0.5;
+  // Sit in the title bar on the far right, vertically centered in the label
+  _corner.set(w - 0.12, 0.02, 0.05);
+  node.label.localToWorld(_corner);
   _corner.project(camera);
 
   if (_corner.z > 1) {
