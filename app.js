@@ -10,6 +10,7 @@ const CATALOG = [
     blurb: "Dead ahead",
     src: "./media/flower.mp4",
     position: [0, 1.35, -4.0],
+    demo: true,
   },
   {
     id: "pulse",
@@ -17,6 +18,7 @@ const CATALOG = [
     blurb: "North-east",
     src: "./media/clip-a.mp4",
     position: [3.2, 1.45, -2.4],
+    demo: true,
   },
   {
     id: "drift",
@@ -24,6 +26,7 @@ const CATALOG = [
     blurb: "North-west",
     src: "./media/clip-b.mp4",
     position: [-3.4, 1.25, -2.6],
+    demo: true,
   },
   {
     id: "rush",
@@ -31,6 +34,7 @@ const CATALOG = [
     blurb: "Over your shoulder",
     src: "./media/clip-c.mp4",
     position: [2.0, 1.55, 3.6],
+    demo: true,
   },
   {
     id: "glow",
@@ -38,8 +42,12 @@ const CATALOG = [
     blurb: "Far west",
     src: "./media/flower.mp4",
     position: [-2.8, 1.5, 2.8],
+    demo: true,
   },
 ];
+
+/** Map popup shows pins within this ground radius (meters). */
+const MAP_RADIUS_M = 40;
 
 const gate = document.getElementById("gate");
 const field = document.getElementById("field");
@@ -68,6 +76,14 @@ const nameCancel = document.getElementById("name-cancel");
 const locationPrompt = document.getElementById("location-prompt");
 const locationCopy = document.getElementById("location-copy");
 const locationBtn = document.getElementById("location-btn");
+const radar = document.getElementById("radar");
+const mapModal = document.getElementById("map-modal");
+const mapBackdrop = document.getElementById("map-backdrop");
+const mapClose = document.getElementById("map-close");
+const mapRotator = document.getElementById("map-rotator");
+const mapPins = document.getElementById("map-pins");
+const mapList = document.getElementById("map-list");
+const mapSupport = document.getElementById("map-support");
 
 const state = {
   offsetYaw: 0,
@@ -87,6 +103,9 @@ const state = {
   originGeo: null,
   userGeo: null,
   geoWatchId: null,
+  demoGeoReady: false,
+  mapOpen: false,
+  mapPinEls: new Map(),
   nodes: [],
   clock: new THREE.Clock(),
   hasGyro: false,
@@ -194,6 +213,7 @@ async function requestLocationAccess({ interactive = false } = {}) {
     state.userGeo = geo;
     state.originGeo = state.originGeo || { ...geo };
     startGeoWatch();
+    anchorDemoVideosToLaunch();
     updateGeoAnchors();
     setLocationUi(
       "ready",
@@ -260,11 +280,29 @@ function startGeoWatch() {
         accuracy: pos.coords.accuracy,
       };
       if (!state.originGeo) state.originGeo = { ...state.userGeo };
+      anchorDemoVideosToLaunch();
       updateGeoAnchors();
     },
     (err) => console.warn(err),
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
   );
+}
+
+/** Place sample clips around wherever this user opened the site. */
+function anchorDemoVideosToLaunch() {
+  const origin = state.originGeo;
+  if (!origin || !state.nodes.length) return;
+
+  for (const node of state.nodes) {
+    if (!node.demo) continue;
+    const east = node.anchorX ?? node.position?.[0] ?? 0;
+    const north = -(node.anchorZ ?? node.position?.[2] ?? 0);
+    const ll = offsetLatLng(origin.lat, origin.lng, east, north);
+    node.lat = ll.lat;
+    node.lng = ll.lng;
+  }
+  state.demoGeoReady = true;
+  if (state.mapOpen) refreshMapList();
 }
 
 function aimMetersOnGround(distance = 3.5) {
@@ -523,6 +561,7 @@ function createNode(item, index) {
 
   const node = {
     ...item,
+    demo: Boolean(item.demo),
     deletable: Boolean(item.deletable),
     lat: item.lat ?? null,
     lng: item.lng ?? null,
@@ -557,6 +596,7 @@ function createNode(item, index) {
 function disposeNode(node) {
   scene.remove(node.group);
   node.radar?.remove();
+  removeMapPin(node);
   try {
     node.video.pause();
   } catch {
@@ -587,6 +627,7 @@ function removeNode(node) {
   if (state.focused === node) setFocus(null);
   else updateDeleteControls();
 
+  if (state.mapOpen) refreshMapList();
   setStatus(`Removed ${node.title}`);
 }
 
@@ -664,6 +705,8 @@ function buildScene() {
   scene.add(ground);
 
   state.nodes = CATALOG.map((item, index) => createNode(item, index));
+  anchorDemoVideosToLaunch();
+  updateGeoAnchors();
 }
 
 function getScreenOrientRad() {
@@ -764,6 +807,144 @@ function updateRadar() {
   }
 }
 
+function getLookYaw() {
+  if (camera) {
+    camera.getWorldDirection(_forward);
+    return Math.atan2(_forward.x, -_forward.z);
+  }
+  return 0;
+}
+
+function nodeGroundOffset(node) {
+  const user = state.userGeo || state.originGeo;
+  if (user && node.lat != null && node.lng != null) {
+    const enu = enuFromOrigin(user.lat, user.lng, node.lat, node.lng);
+    return { east: enu.x, north: -enu.z };
+  }
+  if (camera && node.group) {
+    return {
+      east: node.group.position.x - camera.position.x,
+      north: -(node.group.position.z - camera.position.z),
+    };
+  }
+  return {
+    east: node.anchorX ?? 0,
+    north: -(node.anchorZ ?? 0),
+  };
+}
+
+function ensureMapPin(node) {
+  let el = state.mapPinEls.get(node.id);
+  if (el) return el;
+
+  el = document.createElement("div");
+  el.className = node.deletable || node.worldLocked ? "map-pin map-pin--user" : "map-pin";
+  el.innerHTML = `<span class="map-pin-dot"></span><p class="map-pin-label"></p>`;
+  mapPins?.appendChild(el);
+  state.mapPinEls.set(node.id, el);
+  return el;
+}
+
+function removeMapPin(node) {
+  const el = state.mapPinEls.get(node.id);
+  if (!el) return;
+  el.remove();
+  state.mapPinEls.delete(node.id);
+}
+
+function refreshMapList() {
+  if (!mapList) return;
+  const rows = state.nodes
+    .map((node) => {
+      const off = nodeGroundOffset(node);
+      const dist = Math.hypot(off.east, off.north);
+      return { node, dist, off };
+    })
+    .sort((a, b) => a.dist - b.dist);
+
+  if (!rows.length) {
+    mapList.innerHTML = `<li class="map-list-empty">No videos on the map yet</li>`;
+    return;
+  }
+
+  mapList.innerHTML = rows
+    .map(({ node, dist }) => {
+      const feet = Math.max(1, Math.round(dist * 3.28084));
+      const kind = node.deletable ? "Your pin" : node.demo ? "Sample" : "Video";
+      const coords =
+        node.lat != null && node.lng != null
+          ? `${node.lat.toFixed(5)}, ${node.lng.toFixed(5)}`
+          : "Local field";
+      return `<li>
+        <span class="map-list-title">${escapeHtml(node.title)}</span>
+        <span class="map-list-meta">${kind} · ${feet} ft · ${coords}</span>
+      </li>`;
+    })
+    .join("");
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function updateMapView() {
+  if (!state.mapOpen || !mapRotator || !mapPins) return;
+
+  const yaw = getLookYaw();
+  // Heading-up: rotate world under a fixed forward arrow
+  mapRotator.style.transform = `rotate(${(-yaw * 180) / Math.PI}deg)`;
+
+  const size = mapPins.clientWidth || 280;
+  const half = size * 0.5;
+  const pxPerM = (half - 28) / MAP_RADIUS_M;
+
+  const liveIds = new Set();
+  for (const node of state.nodes) {
+    liveIds.add(node.id);
+    const off = nodeGroundOffset(node);
+    const el = ensureMapPin(node);
+    const label = el.querySelector(".map-pin-label");
+    if (label) label.textContent = node.title;
+
+    const x = half + off.east * pxPerM;
+    const y = half - off.north * pxPerM;
+    // Counter-rotate labels so text stays upright while the map turns
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.style.transform = `translate(-50%, -50%) rotate(${(yaw * 180) / Math.PI}deg)`;
+  }
+
+  for (const [id, el] of state.mapPinEls) {
+    if (!liveIds.has(id)) {
+      el.remove();
+      state.mapPinEls.delete(id);
+    }
+  }
+}
+
+function openMapModal() {
+  if (!mapModal || state.watching) return;
+  state.mapOpen = true;
+  mapModal.hidden = false;
+  if (mapSupport) {
+    mapSupport.textContent = state.userGeo || state.originGeo
+      ? "Map turns with you — forward is up. Samples sit where you opened Lumen."
+      : "Map turns with you — enable location to place samples on GPS.";
+  }
+  refreshMapList();
+  updateMapView();
+}
+
+function closeMapModal() {
+  if (!mapModal) return;
+  state.mapOpen = false;
+  mapModal.hidden = true;
+}
+
 async function ensurePreview(node) {
   if (!node || node.previewing || state.watching) return;
   try {
@@ -827,6 +1008,7 @@ function setFocus(node) {
 
 function openTheater(node) {
   if (!node) return;
+  closeMapModal();
   state.watching = true;
   state.watchingNode = node;
   pausePreviews(null);
@@ -999,6 +1181,7 @@ function animate() {
   updateCameraRig(dt);
   updateNodes(t);
   updateRadar();
+  updateMapView();
   // Keep geo pins synced if watch hasn't fired yet
   if (state.userGeo) updateGeoAnchors();
 
@@ -1053,6 +1236,7 @@ function bootField(message) {
       state.userGeo = geo;
       state.originGeo = geo;
       startGeoWatch();
+      anchorDemoVideosToLaunch();
       updateGeoAnchors();
     } catch (err) {
       console.warn(err);
@@ -1098,6 +1282,12 @@ async function enterField() {
 enterBtn.addEventListener("click", enterField);
 watchBtn.addEventListener("click", () => openTheater(state.focused));
 closeTheater.addEventListener("click", closeTheaterMode);
+radar?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  openMapModal();
+});
+mapClose?.addEventListener("click", closeMapModal);
+mapBackdrop?.addEventListener("click", closeMapModal);
 deleteBtn.addEventListener("click", (e) => {
   e.stopPropagation();
   if (state.focused?.deletable) removeNode(state.focused);
@@ -1178,8 +1368,10 @@ async function placeNamedVideo(file, name) {
   }
 
   // Place in the direction the phone is aimed right now (visual world lock).
-  // GPS is only used for the 25ft range check — mapping aim→ENU was skewing pins left.
+  // GPS stores the pin's ground location for range checks and the field map.
   const position = placementAlongLook(3.2);
+  const aim = aimMetersOnGround(3.2);
+  const pinGeo = offsetLatLng(geo.lat, geo.lng, aim.east, aim.north);
 
   const node = createNode(
     {
@@ -1190,8 +1382,8 @@ async function placeNamedVideo(file, name) {
       position,
       objectUrl: url,
       deletable: true,
-      lat: geo.lat,
-      lng: geo.lng,
+      lat: pinGeo.lat,
+      lng: pinGeo.lng,
       inRange: true,
       worldLocked: true,
     },
@@ -1199,6 +1391,7 @@ async function placeNamedVideo(file, name) {
   );
   state.nodes.push(node);
   updateGeoAnchors();
+  if (state.mapOpen) refreshMapList();
   setStatus(`“${name}” pinned where you’re aiming`);
   return node;
 }
@@ -1261,5 +1454,11 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown") state.offsetPitch -= step * 0.7;
   state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -1.2, 1.2);
   if (e.key === "Enter" && state.focused) openTheater(state.focused);
-  if (e.key === "Escape") closeTheaterMode();
+  if (e.key === "Escape") {
+    if (state.mapOpen) {
+      closeMapModal();
+      return;
+    }
+    closeTheaterMode();
+  }
 });

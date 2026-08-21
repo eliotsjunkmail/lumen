@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=16" />
+    <link rel="stylesheet" href="styles.css?v=17" />
   </head>
   <body>
     <div id="app">
@@ -70,12 +70,18 @@
           <p class="hud-hint" id="hud-hint">Look around to find videos</p>
         </header>
 
-        <div class="radar" id="radar" aria-hidden="true">
-          <div class="radar-ring"></div>
-          <div class="radar-ring radar-ring--mid"></div>
-          <div class="radar-you" aria-label="You"></div>
-          <div class="radar-dots" id="radar-dots"></div>
-        </div>
+        <button
+          type="button"
+          class="radar"
+          id="radar"
+          aria-label="Open field map"
+          title="Open map"
+        >
+          <div class="radar-ring" aria-hidden="true"></div>
+          <div class="radar-ring radar-ring--mid" aria-hidden="true"></div>
+          <div class="radar-you" aria-hidden="true"></div>
+          <div class="radar-dots" id="radar-dots" aria-hidden="true"></div>
+        </button>
 
         <div class="aim" id="aim" aria-hidden="true">
           <span class="aim-corner aim-tl"></span>
@@ -163,6 +169,42 @@
           </p>
         </form>
       </div>
+
+      <div id="map-modal" class="map-modal" hidden>
+        <button
+          type="button"
+          class="map-backdrop"
+          id="map-backdrop"
+          aria-label="Close map"
+        ></button>
+        <div
+          class="map-sheet"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="map-title"
+        >
+          <header class="map-header">
+            <div>
+              <p class="map-brand">Lumen</p>
+              <h2 class="map-title" id="map-title">Nearby</h2>
+            </div>
+            <button type="button" id="map-close" class="map-close" aria-label="Close">
+              ×
+            </button>
+          </header>
+          <p class="map-support" id="map-support">
+            Map turns with you — forward is up.
+          </p>
+          <div class="map-viewport" id="map-viewport">
+            <div class="map-rotator" id="map-rotator">
+              <div class="map-grid" aria-hidden="true"></div>
+              <div class="map-pins" id="map-pins"></div>
+            </div>
+            <div class="map-you" aria-label="You"></div>
+          </div>
+          <ul class="map-list" id="map-list"></ul>
+        </div>
+      </div>
     </div>
 
     <script type="importmap">
@@ -172,6 +214,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=16"></script>
+    <script type="module" src="app.js?v=17"></script>
   </body>
 </html>
