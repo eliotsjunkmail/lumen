@@ -676,10 +676,11 @@ function getScreenOrientRad() {
 function setDeviceQuaternion(alphaDeg, betaDeg, gammaDeg) {
   const alpha = THREE.MathUtils.degToRad(alphaDeg);
   const beta = THREE.MathUtils.degToRad(betaDeg);
-  const gamma = THREE.MathUtils.degToRad(gammaDeg);
+  // Ignore device roll (gamma) so the AR scene stays horizon-level.
+  // Video planes then stay parallel to the ground instead of tilting with the phone.
+  const gamma = 0;
   const orient = getScreenOrientRad();
 
-  // Device frame → world, then aim through the back camera
   _euler.set(beta, alpha, -gamma, "YXZ");
   _deviceQuat.setFromEuler(_euler);
   _deviceQuat.multiply(_q1);
@@ -716,10 +717,11 @@ function updateNodes(t) {
     node.frame.material.opacity = hot ? 0.55 : 0.16;
     node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
 
-    // Billboard: readable from any direction when in range
+    // Yaw-only billboard: face the viewer but stay upright (parallel to gravity / ground)
     const dx = camera.position.x - node.group.position.x;
     const dz = camera.position.z - node.group.position.z;
-    node.group.rotation.y = Math.atan2(dx, dz);
+    const yaw = Math.atan2(dx, dz);
+    node.group.quaternion.setFromEuler(_euler.set(0, yaw, 0, "YXZ"));
   }
 }
 
