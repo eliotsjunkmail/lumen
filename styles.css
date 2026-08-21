@@ -416,8 +416,7 @@ button {
   transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
 }
 
-.radar-dot.is-hot,
-.radar-dot.is-ahead {
+.radar-dot.is-in-view {
   background: var(--signal);
   transform: scale(1.25);
   box-shadow: 0 0 10px rgba(198, 255, 74, 0.75);
@@ -435,7 +434,7 @@ button {
   line-height: 1;
   display: grid;
   place-items: center;
-  box-shadow: 0 0 8px rgba(198, 255, 74, 0.25);
+  box-shadow: 0 0 8px rgba(238, 247, 240, 0.35);
 }
 
 .radar-dot--user::before {
@@ -443,12 +442,12 @@ button {
   transform: translateY(-0.5px);
 }
 
-.radar-dot--user.is-hot,
-.radar-dot--user.is-ahead {
+.radar-dot--user.is-in-view {
   border-color: var(--signal);
   color: var(--signal);
   background: rgba(6, 16, 12, 0.92);
   transform: scale(1.12);
+  box-shadow: 0 0 10px rgba(198, 255, 74, 0.55);
 }
 
 .aim {

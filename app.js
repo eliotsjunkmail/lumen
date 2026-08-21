@@ -715,7 +715,6 @@ function updateNodes(t) {
     const hot = state.focused === node;
     node.frame.material.opacity = hot ? 0.55 : 0.16;
     node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
-    node.radar.classList.toggle("is-hot", hot);
 
     // Billboard: readable from any direction when in range
     const dx = camera.position.x - node.group.position.x;
@@ -724,11 +723,22 @@ function updateNodes(t) {
   }
 }
 
+function isNodeInView(node) {
+  if (!node?.group?.visible) return false;
+  camera.getWorldDirection(_forward);
+  _to.copy(node.group.position).sub(camera.position);
+  const dist = _to.length();
+  if (dist < 0.35 || dist > 14) return false;
+  _to.normalize();
+  const ang = Math.acos(THREE.MathUtils.clamp(_forward.dot(_to), -1, 1));
+  // Same aim cone as lock-on — only then count as "in view"
+  return ang <= 0.42;
+}
+
 function updateRadar() {
   const radius = 34;
   const center = 42;
   camera.getWorldDirection(_forward);
-  // Heading from camera forward on XZ (radar "up" = look direction)
   const yaw = Math.atan2(_forward.x, _forward.z);
   const cos = Math.cos(-yaw);
   const sin = Math.sin(-yaw);
@@ -738,24 +748,19 @@ function updateRadar() {
 
     const dx = node.group.position.x - camera.position.x;
     const dz = node.group.position.z - camera.position.z;
-    // Rotate into view space: +forward, +right
     const right = dx * cos - dz * sin;
     const forward = dx * sin + dz * cos;
     const dist = Math.hypot(right, forward) || 1;
     const clamped = Math.min(dist / 6.5, 1);
-    // Screen: x right, y down — forward toward TOP, fix left/right mirror
     const x = center - (right / dist) * radius * clamped;
     const y = center - (forward / dist) * radius * clamped;
     node.radar.style.left = `${x}px`;
     node.radar.style.top = `${y}px`;
 
-    // Green when the clip is ahead / in the camera view cone
-    const ahead =
-      forward > 0.35 &&
-      Math.abs(right) < Math.max(0.55, forward * 0.75) &&
-      node.group.visible;
-    node.radar.classList.toggle("is-ahead", ahead && state.focused !== node);
-    node.radar.classList.toggle("is-hot", state.focused === node || ahead);
+    // Green only when that video is actually in the camera view
+    const inView = isNodeInView(node);
+    node.radar.classList.toggle("is-in-view", inView);
+    node.radar.classList.remove("is-hot", "is-ahead");
   }
 }
 
