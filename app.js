@@ -268,12 +268,43 @@ function startGeoWatch() {
 }
 
 function aimMetersOnGround(distance = 3.5) {
-  if (!camera) return { east: 0, north: distance };
-  camera.getWorldDirection(_forward);
-  const flat = new THREE.Vector3(_forward.x, 0, _forward.z);
-  if (flat.lengthSq() < 0.0001) flat.set(0, 0, -1);
-  flat.normalize().multiplyScalar(distance);
-  return { east: flat.x, north: -flat.z };
+  const forward = getLookForwardFlat();
+  forward.multiplyScalar(distance);
+  return { east: forward.x, north: -forward.z };
+}
+
+/** Unsmoothed look direction on the ground plane (matches what the user is aiming). */
+function getLookForwardFlat() {
+  // Snap rig so placement isn't behind a slerp lag
+  if (camera) updateCameraRig(1);
+
+  const q = new THREE.Quaternion();
+  if (state.orientReady) {
+    _offsetQuat.setFromEuler(
+      new THREE.Euler(state.offsetPitch, state.offsetYaw, 0, "YXZ")
+    );
+    q.copy(_deviceQuat).multiply(_offsetQuat);
+  } else if (camera) {
+    q.copy(camera.quaternion);
+  } else {
+    return new THREE.Vector3(0, 0, -1);
+  }
+
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+  forward.y = 0;
+  if (forward.lengthSq() < 0.0001) forward.set(0, 0, -1);
+  forward.normalize();
+  return forward;
+}
+
+function placementAlongLook(distance = 3.2) {
+  const forward = getLookForwardFlat();
+  const origin = camera ? camera.position : new THREE.Vector3(0, 1.4, 0);
+  return [
+    origin.x + forward.x * distance,
+    1.4,
+    origin.z + forward.z * distance,
+  ];
 }
 
 function updateGeoAnchors() {
@@ -290,12 +321,19 @@ function updateGeoAnchors() {
     node.group.visible = inRange;
     if (node.radar) node.radar.style.display = inRange ? "" : "none";
 
-    const origin = state.originGeo || user;
-    const enu = enuFromOrigin(origin.lat, origin.lng, node.lat, node.lng);
-    node.anchorX = enu.x;
-    node.anchorZ = enu.z;
+    // Keep world-locked pins where they were aimed (camera frame).
+    // Only non-locked geo nodes are repositioned via GPS ENU.
+    if (!node.worldLocked) {
+      const origin = state.originGeo || user;
+      const enu = enuFromOrigin(origin.lat, origin.lng, node.lat, node.lng);
+      node.anchorX = enu.x;
+      node.anchorZ = enu.z;
+    }
+
     const feet = Math.max(1, Math.round(dist * 3.28084));
-    node.blurb = inRange ? `${feet} ft · aim from any side` : `Out of range (${feet} ft)`;
+    node.blurb = inRange
+      ? `${feet} ft · aim from any side`
+      : `Out of range (${feet} ft)`;
     if (state.focused === node) hudHint.textContent = node.blurb;
 
     if (!inRange && state.focused === node) setFocus(null);
@@ -482,6 +520,7 @@ function createNode(item, index) {
     deletable: Boolean(item.deletable),
     lat: item.lat ?? null,
     lng: item.lng ?? null,
+    worldLocked: Boolean(item.worldLocked),
     inRange: item.lat == null ? true : Boolean(item.inRange),
     anchorX: item.position[0],
     anchorZ: item.position[2],
@@ -1114,10 +1153,9 @@ async function placeNamedVideo(file, name) {
     }
   }
 
-  const aim = aimMetersOnGround(3.2);
-  const pinned = offsetLatLng(geo.lat, geo.lng, aim.east, aim.north);
-  const origin = state.originGeo || geo;
-  const enu = enuFromOrigin(origin.lat, origin.lng, pinned.lat, pinned.lng);
+  // Place in the direction the phone is aimed right now (visual world lock).
+  // GPS is only used for the 25ft range check — mapping aim→ENU was skewing pins left.
+  const position = placementAlongLook(3.2);
 
   const node = createNode(
     {
@@ -1125,18 +1163,19 @@ async function placeNamedVideo(file, name) {
       title: name,
       blurb: "Within 25 ft · aim from any side",
       src: url,
-      position: [enu.x, 1.4, enu.z],
+      position,
       objectUrl: url,
       deletable: true,
-      lat: pinned.lat,
-      lng: pinned.lng,
+      lat: geo.lat,
+      lng: geo.lng,
       inRange: true,
+      worldLocked: true,
     },
     state.nodes.length
   );
   state.nodes.push(node);
   updateGeoAnchors();
-  setStatus(`“${name}” pinned — visible within ${GEO_RANGE_FT} ft`);
+  setStatus(`“${name}” pinned where you’re aiming`);
   return node;
 }
 
