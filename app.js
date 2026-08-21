@@ -106,6 +106,7 @@ const state = {
   demoGeoReady: false,
   mapOpen: false,
   mapPinEls: new Map(),
+  mapListAt: 0,
   nodes: [],
   clock: new THREE.Clock(),
   hasGyro: false,
@@ -1182,6 +1183,10 @@ function animate() {
   updateNodes(t);
   updateRadar();
   updateMapView();
+  if (state.mapOpen && t - state.mapListAt > 1.25) {
+    state.mapListAt = t;
+    refreshMapList();
+  }
   // Keep geo pins synced if watch hasn't fired yet
   if (state.userGeo) updateGeoAnchors();
 
