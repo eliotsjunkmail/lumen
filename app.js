@@ -347,7 +347,7 @@ function setStatus(message, ms = 2800) {
   statusTimer = setTimeout(() => statusEl.classList.remove("is-on"), ms);
 }
 
-function createLabelTexture(title, blurb) {
+function createLabelTexture(title, blurb, { reserveDelete = false } = {}) {
   const c = document.createElement("canvas");
   c.width = 1024;
   c.height = 256;
@@ -364,10 +364,12 @@ function createLabelTexture(title, blurb) {
   ctx.fillText("WATCH", 64, 110);
   ctx.fillStyle = "#eef7f0";
   ctx.font = "800 64px Syne, sans-serif";
-  ctx.fillText(title.slice(0, 28), 64, 175);
+  // Leave room on the right for the HTML × when this is a deletable upload
+  const titleMax = reserveDelete ? 20 : 28;
+  ctx.fillText(title.slice(0, titleMax), 64, 175);
   ctx.fillStyle = "rgba(238, 247, 240, 0.7)";
   ctx.font = "600 34px Manrope, sans-serif";
-  ctx.fillText(blurb.slice(0, 40), 260, 110);
+  ctx.fillText(blurb.slice(0, reserveDelete ? 28 : 40), 260, 110);
   const texture = new THREE.CanvasTexture(c);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
