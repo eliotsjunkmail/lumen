@@ -1,7 +1,35 @@
 import * as THREE from "three";
+import {
+  cloudConfigured,
+  loadSpots,
+  publishSpot,
+  deleteSpot,
+  videoUrl,
+} from "./cloud.js";
 
 const GEO_RANGE_FT = 25;
 const GEO_RANGE_M = GEO_RANGE_FT * 0.3048;
+
+/** Stable anonymous id so users can delete their own shared pins. */
+function getDeviceId() {
+  let id = null;
+  try {
+    id = localStorage.getItem("lumen-device");
+  } catch {
+    /* private browsing */
+  }
+  if (!id) {
+    id =
+      crypto.randomUUID?.() ||
+      `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      localStorage.setItem("lumen-device", id);
+    } catch {
+      /* ignore */
+    }
+  }
+  return id;
+}
 
 const CATALOG = [
   {
@@ -650,6 +678,12 @@ function disposeNode(node) {
 function removeNode(node) {
   if (!node?.deletable) return;
 
+  if (node.cloudId) {
+    deleteSpot(node.cloudId, node.storagePath).catch((err) =>
+      console.warn("Cloud delete failed", err)
+    );
+  }
+
   if (state.watchingNode === node) closeTheaterMode();
   disposeNode(node);
   state.nodes = state.nodes.filter((n) => n !== node);
@@ -1295,8 +1329,65 @@ function bootField(message) {
       console.warn(err);
       setStatus("Enable location to pin videos within 25 ft", 4500);
     }
+    syncSharedSpots();
     await processNameQueue();
   })();
+}
+
+/** Load everyone's shared pins from the cloud into the field. */
+async function syncSharedSpots() {
+  if (!cloudConfigured() || !scene) return;
+
+  let rows = [];
+  try {
+    rows = await loadSpots();
+  } catch (err) {
+    console.warn(err);
+    return;
+  }
+
+  const origin = state.originGeo || state.userGeo;
+  const mineId = getDeviceId();
+  let added = 0;
+
+  for (const row of rows) {
+    const nodeId = `spot-${row.id}`;
+    if (state.nodes.some((n) => n.id === nodeId)) continue;
+    if (row.lat == null || row.lng == null || !row.video_path) continue;
+
+    let position = [0, 1.4, -3.5];
+    if (origin) {
+      const enu = enuFromOrigin(origin.lat, origin.lng, row.lat, row.lng);
+      position = [enu.x, 1.4, enu.z];
+    }
+
+    const node = createNode(
+      {
+        id: nodeId,
+        title: row.title || "Shared clip",
+        blurb: "Shared pin",
+        src: videoUrl(row.video_path),
+        position,
+        deletable: row.owner === mineId,
+        lat: row.lat,
+        lng: row.lng,
+        inRange: false,
+        cloudId: row.id,
+        storagePath: row.video_path,
+      },
+      state.nodes.length
+    );
+    state.nodes.push(node);
+    added += 1;
+  }
+
+  if (added) {
+    updateGeoAnchors();
+    if (state.mapOpen) refreshMapList();
+    setStatus(
+      added === 1 ? "Loaded 1 shared pin" : `Loaded ${added} shared pins`
+    );
+  }
 }
 
 async function enterField() {
@@ -1589,6 +1680,27 @@ async function placeNamedVideo(file, name) {
   updateGeoAnchors();
   if (state.mapOpen) refreshMapList();
   setStatus(`“${name}” pinned where you’re aiming`);
+
+  // Publish in the background so anyone, on any browser, can load this pin
+  if (cloudConfigured()) {
+    setStatus(`Publishing “${name}”…`, 6000);
+    publishSpot(file, {
+      title: name,
+      lat: pinGeo.lat,
+      lng: pinGeo.lng,
+      owner: getDeviceId(),
+    })
+      .then((res) => {
+        node.cloudId = res.id;
+        node.storagePath = res.path;
+        setStatus(`“${name}” shared — anyone here can watch it`);
+      })
+      .catch((err) => {
+        console.warn(err);
+        setStatus("Couldn’t publish — clip stays on this phone", 4200);
+      });
+  }
+
   return node;
 }
 
