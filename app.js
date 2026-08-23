@@ -882,6 +882,47 @@ function removeMapPin(node) {
   state.mapPinEls.delete(node.id);
 }
 
+/** Under ¼ mile → feet; over → quarter-mile steps ("5½ miles"). */
+function formatMapDistance(meters) {
+  const feet = meters * 3.28084;
+  if (feet < 1320) return `${Math.max(1, Math.round(feet))} ft`;
+  const quarters = Math.round((feet / 5280) * 4) / 4;
+  const whole = Math.floor(quarters);
+  const frac = { 0.25: "¼", 0.5: "½", 0.75: "¾" }[quarters - whole] || "";
+  const num = whole ? `${whole}${frac}` : frac;
+  return `${num} ${quarters <= 1 ? "mile" : "miles"}`;
+}
+
+// Reverse-geocode cache: pins cluster, so round to ~100m cells
+const placeCache = new Map();
+
+function lookupPlace(lat, lng) {
+  const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  if (placeCache.has(key)) return placeCache.get(key);
+  placeCache.set(key, null); // pending
+
+  fetch(
+    `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
+  )
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => {
+      if (!data) return;
+      const city = data.city || data.locality || "";
+      const stateCode =
+        (data.principalSubdivisionCode || "").split("-").pop() ||
+        data.principalSubdivision ||
+        "";
+      const place =
+        city && stateCode ? `${city}, ${stateCode}` : city || stateCode;
+      if (place) {
+        placeCache.set(key, place);
+        if (state.mapOpen) refreshMapList();
+      }
+    })
+    .catch(() => {});
+  return null;
+}
+
 function refreshMapList() {
   if (!mapList) return;
   const rows = state.nodes
@@ -899,15 +940,18 @@ function refreshMapList() {
 
   mapList.innerHTML = rows
     .map(({ node, dist }) => {
-      const feet = Math.max(1, Math.round(dist * 3.28084));
       const kind = node.deletable ? "Your pin" : node.demo ? "Sample" : "Video";
-      const coords =
+      const place =
         node.lat != null && node.lng != null
-          ? `${node.lat.toFixed(5)}, ${node.lng.toFixed(5)}`
-          : "Local field";
+          ? lookupPlace(node.lat, node.lng)
+          : null;
+      const meta = [kind, formatMapDistance(dist), place]
+        .filter(Boolean)
+        .map(escapeHtml)
+        .join(" · ");
       return `<li>
         <span class="map-list-title">${escapeHtml(node.title)}</span>
-        <span class="map-list-meta">${kind} · ${feet} ft · ${coords}</span>
+        <span class="map-list-meta">${meta}</span>
       </li>`;
     })
     .join("");
