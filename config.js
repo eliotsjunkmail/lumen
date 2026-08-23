@@ -1,13 +1,11 @@
-// Public Supabase web config (safe to ship — the anon key is meant for
-// browsers; data access is controlled by row-level-security policies).
-// Fill these from Supabase Dashboard → Project Settings → API.
-export const SUPABASE_URL = "";
-export const SUPABASE_ANON_KEY = "";
+// Public Cloudinary web config (safe to ship — unsigned presets are meant
+// for browser uploads; no API secret ever ships to the client).
+// Fill these from Cloudinary Dashboard:
+//   cloud name — shown on the dashboard home
+//   preset — Settings → Upload → Upload presets → Add (Signing mode: Unsigned)
+export const CLOUDINARY_CLOUD_NAME = "";
+export const CLOUDINARY_UPLOAD_PRESET = "";
 
 export function isCloudConfigured() {
-  return Boolean(
-    SUPABASE_URL &&
-      SUPABASE_ANON_KEY &&
-      SUPABASE_URL.startsWith("https://")
-  );
+  return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET);
 }

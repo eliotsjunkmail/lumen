@@ -679,7 +679,7 @@ function removeNode(node) {
   if (!node?.deletable) return;
 
   if (node.cloudId) {
-    deleteSpot(node.cloudId, node.storagePath).catch((err) =>
+    deleteSpot(node.cloudId, node.storagePath, node.deleteToken).catch((err) =>
       console.warn("Cloud delete failed", err)
     );
   }
@@ -1347,12 +1347,13 @@ async function syncSharedSpots() {
   }
 
   const origin = state.originGeo || state.userGeo;
-  const mineId = getDeviceId();
   let added = 0;
 
   for (const row of rows) {
     const nodeId = `spot-${row.id}`;
     if (state.nodes.some((n) => n.id === nodeId)) continue;
+    // Skip clips this session already shows as freshly published uploads
+    if (state.nodes.some((n) => n.cloudId === row.id)) continue;
     if (row.lat == null || row.lng == null || !row.video_path) continue;
 
     let position = [0, 1.4, -3.5];
@@ -1368,7 +1369,9 @@ async function syncSharedSpots() {
         blurb: "Shared pin",
         src: videoUrl(row.video_path),
         position,
-        deletable: row.owner === mineId,
+        // Unsigned uploads can only be deleted shortly after publishing,
+        // so previously shared pins load as view-only
+        deletable: false,
         lat: row.lat,
         lng: row.lng,
         inRange: false,
@@ -1693,6 +1696,7 @@ async function placeNamedVideo(file, name) {
       .then((res) => {
         node.cloudId = res.id;
         node.storagePath = res.path;
+        node.deleteToken = res.deleteToken;
         setStatus(`“${name}” shared — anyone here can watch it`);
       })
       .catch((err) => {

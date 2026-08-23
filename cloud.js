@@ -1,81 +1,90 @@
-// Shared-world sync via Supabase REST (no SDK needed).
-// Videos live in the public "videos" storage bucket; pin metadata in "spots".
-import { SUPABASE_URL, SUPABASE_ANON_KEY, isCloudConfigured } from "./config.js";
+// Shared-world sync via Cloudinary unsigned uploads.
+// Videos are tagged, pin metadata (title/GPS/owner) rides in the context
+// field, and visitors load everything through the public list-by-tag JSON.
+import {
+  CLOUDINARY_CLOUD_NAME,
+  CLOUDINARY_UPLOAD_PRESET,
+  isCloudConfigured,
+} from "./config.js";
 
-const BUCKET = "videos";
-
-function authHeaders() {
-  return {
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-  };
-}
+const TAG = "lumen-spot";
 
 export function cloudConfigured() {
   return isCloudConfigured();
 }
 
 export function videoUrl(path) {
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`;
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/${path}`;
 }
 
 export async function loadSpots() {
+  // Cache-buster: the list JSON is CDN-cached, keep pins reasonably fresh
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/spots?select=*&order=created_at.desc&limit=200`,
-    { headers: authHeaders() }
+    `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/list/${TAG}.json?t=${Math.floor(
+      Date.now() / 30000
+    )}`
   );
+  if (res.status === 404) return []; // no shared clips yet
   if (!res.ok) throw new Error(`Loading shared pins failed (${res.status})`);
-  return res.json();
+  const data = await res.json();
+
+  return (data.resources || [])
+    .map((r) => {
+      const ctx = r.context?.custom || {};
+      return {
+        id: r.public_id,
+        title: ctx.title || "Shared clip",
+        lat: Number.parseFloat(ctx.lat),
+        lng: Number.parseFloat(ctx.lng),
+        owner: ctx.owner || "",
+        video_path: `v${r.version}/${r.public_id}.${r.format || "mp4"}`,
+      };
+    })
+    .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
 }
 
 export async function publishSpot(file, { title, lat, lng, owner }) {
-  const ext = (file.name?.match(/\.(\w+)$/)?.[1] || "mp4").toLowerCase();
-  const path = `${owner}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-
-  const upload = await fetch(
-    `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`,
-    {
-      method: "POST",
-      headers: {
-        ...authHeaders(),
-        "Content-Type": file.type || "video/mp4",
-      },
-      body: file,
-    }
+  const form = new FormData();
+  form.append("file", file);
+  form.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  form.append("tags", TAG);
+  // context uses | and = as separators — strip them from the title
+  const safeTitle = String(title).replace(/[|=]/g, " ").trim();
+  form.append(
+    "context",
+    `title=${safeTitle}|lat=${lat}|lng=${lng}|owner=${owner}`
   );
-  if (!upload.ok) throw new Error(`Video upload failed (${upload.status})`);
 
-  const insert = await fetch(`${SUPABASE_URL}/rest/v1/spots`, {
-    method: "POST",
-    headers: {
-      ...authHeaders(),
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify({ title, lat, lng, video_path: path, owner }),
-  });
-  if (!insert.ok) {
-    // Roll back the orphaned file so storage doesn't fill with unlisted clips
-    fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
-      method: "DELETE",
-      headers: authHeaders(),
-    }).catch(() => {});
-    throw new Error(`Saving the pin failed (${insert.status})`);
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`,
+    { method: "POST", body: form }
+  );
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new Error(
+      detail?.error?.message || `Video upload failed (${res.status})`
+    );
   }
-
-  const [row] = await insert.json();
-  return { id: row.id, path, url: videoUrl(path) };
+  const data = await res.json();
+  return {
+    id: data.public_id,
+    path: `v${data.version}/${data.public_id}.${data.format || "mp4"}`,
+    url: data.secure_url,
+    // Only present when the preset enables "Return delete token" —
+    // allows undoing an upload for ~10 minutes without any API secret
+    deleteToken: data.delete_token || null,
+  };
 }
 
-export async function deleteSpot(id, path) {
-  await fetch(`${SUPABASE_URL}/rest/v1/spots?id=eq.${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    headers: authHeaders(),
-  });
-  if (path) {
-    await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
-      method: "DELETE",
-      headers: authHeaders(),
-    }).catch(() => {});
+export async function deleteSpot(id, path, deleteToken) {
+  if (!deleteToken) {
+    throw new Error("No delete token — clip can only be removed right after upload");
   }
+  const form = new FormData();
+  form.append("token", deleteToken);
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/delete_by_token`,
+    { method: "POST", body: form }
+  );
+  if (!res.ok) throw new Error(`Cloud delete failed (${res.status})`);
 }
