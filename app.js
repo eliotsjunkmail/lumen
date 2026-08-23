@@ -959,14 +959,21 @@ function refreshMapList() {
         node.thumbUrl || (node.storagePath ? thumbUrl(node.storagePath) : null);
       const thumbHtml = thumb
         ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />`
-        : `<span class="map-thumb-ph">▶</span>`;
+        : `<span class="map-thumb-ph"></span>`;
 
       return `<li>
-        <span class="map-thumb">${thumbHtml}</span>
-        <span class="map-list-body">
-          <span class="map-list-title">${escapeHtml(node.title)}</span>
-          <span class="map-list-meta">${meta}</span>
-        </span>
+        <button
+          type="button"
+          class="map-list-play"
+          data-watch="${escapeHtml(node.id)}"
+          aria-label="Watch ${escapeHtml(node.title)}"
+        >
+          <span class="map-thumb">${thumbHtml}</span>
+          <span class="map-list-body">
+            <span class="map-list-title">${escapeHtml(node.title)}</span>
+            <span class="map-list-meta">${meta}</span>
+          </span>
+        </button>
         <span class="map-list-arrow" data-arrow-for="${escapeHtml(node.id)}">
           <svg viewBox="0 0 24 24"><path d="M12 2 L19 15 L12 11.6 L5 15 Z" /></svg>
         </span>
@@ -979,6 +986,13 @@ function refreshMapList() {
     state.mapArrowEls.set(el.dataset.arrowFor, el);
   });
 }
+
+mapList?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-watch]");
+  if (!btn) return;
+  const node = state.nodes.find((n) => n.id === btn.dataset.watch);
+  if (node) openTheater(node);
+});
 
 function escapeHtml(text) {
   return String(text)
