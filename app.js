@@ -478,11 +478,6 @@ function placementFromAim(spreadIndex = 0, spreadCount = 1) {
   return [_place.x, _place.y, _place.z];
 }
 
-function titleFromFile(file, fallbackIndex) {
-  const base = (file.name || `Video ${fallbackIndex}`).replace(/\.[^.]+$/, "");
-  return base.slice(0, 28) || `Video ${fallbackIndex}`;
-}
-
 function applyVideoAspect(node) {
   const w = node.video.videoWidth || 16;
   const h = node.video.videoHeight || 9;
@@ -1338,20 +1333,163 @@ function updateUploadNote(count) {
       : `${count} videos selected — Open lens to name & pin them`;
 }
 
+// —— Content-aware default names (MobileNet, lazy-loaded) ——
+let visionModelPromise = null;
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(s);
+  });
+}
+
+function loadVisionModel() {
+  if (!visionModelPromise) {
+    visionModelPromise = (async () => {
+      await loadScript(
+        "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"
+      );
+      await loadScript(
+        "https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"
+      );
+      return window.mobilenet.load({ version: 2, alpha: 0.5 });
+    })().catch((err) => {
+      visionModelPromise = null;
+      throw err;
+    });
+  }
+  return visionModelPromise;
+}
+
+/** Grab a representative frame as a square canvas for classification. */
+function grabVideoFrame(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    let settled = false;
+
+    const cleanup = () => {
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(url);
+    };
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err instanceof Error ? err : new Error("Frame grab failed"));
+    };
+    const timer = setTimeout(() => fail(new Error("Frame grab timed out")), 6000);
+
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    video.addEventListener("error", () => {
+      clearTimeout(timer);
+      fail(video.error || new Error("Video decode failed"));
+    });
+    video.addEventListener(
+      "loadeddata",
+      () => {
+        const finish = () => {
+          if (settled) return;
+          try {
+            const size = 224;
+            const c = document.createElement("canvas");
+            c.width = size;
+            c.height = size;
+            const ctx = c.getContext("2d");
+            const vw = video.videoWidth || size;
+            const vh = video.videoHeight || size;
+            const s = Math.min(vw, vh);
+            ctx.drawImage(video, (vw - s) / 2, (vh - s) / 2, s, s, 0, 0, size, size);
+            settled = true;
+            clearTimeout(timer);
+            cleanup();
+            resolve(c);
+          } catch (err) {
+            clearTimeout(timer);
+            fail(err);
+          }
+        };
+        const target = Math.min(0.6, (video.duration || 1) * 0.25);
+        video.addEventListener("seeked", finish, { once: true });
+        try {
+          video.currentTime = target;
+        } catch {
+          finish();
+        }
+      },
+      { once: true }
+    );
+    video.src = url;
+  });
+}
+
+function titleCase(text) {
+  return text.replace(/\w\S*/g, (w) => w[0].toUpperCase() + w.slice(1));
+}
+
+async function suggestVideoName(file) {
+  const frame = await grabVideoFrame(file);
+  const model = await loadVisionModel();
+  const preds = await model.classify(frame);
+  const label = preds?.[0]?.className?.split(",")[0]?.trim();
+  if (!label) throw new Error("No label from classifier");
+  return titleCase(label).slice(0, 40);
+}
+
+function fallbackName() {
+  const time = new Date().toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `Clip ${time}`;
+}
+
+function focusNameInput() {
+  nameInput.focus();
+  nameInput.select();
+  try {
+    nameInput.setSelectionRange(0, nameInput.value.length);
+  } catch {
+    /* selection not supported */
+  }
+}
+
 function openNameModal(file) {
   return new Promise((resolve) => {
     state.naming = true;
     nameFile.textContent = file.name || "Video";
-    nameInput.value = titleFromFile(file, state.uploadCount + 1);
+    nameInput.value = fallbackName();
     nameModal.hidden = false;
-    requestAnimationFrame(() => {
-      nameInput.focus();
-      nameInput.select();
-    });
+    // Focus synchronously — iOS only shows the keyboard inside a user gesture
+    focusNameInput();
+
+    let userTyped = false;
+    const markTyped = () => {
+      userTyped = true;
+    };
+    nameInput.addEventListener("input", markTyped);
+
+    // Swap in a name from what's actually in the video, unless the user typed
+    suggestVideoName(file)
+      .then((name) => {
+        if (!userTyped && !nameModal.hidden) {
+          nameInput.value = name;
+          focusNameInput();
+        }
+      })
+      .catch((err) => console.warn("Name suggestion failed", err));
 
     const cleanup = () => {
       nameForm.removeEventListener("submit", onSubmit);
       nameCancel.removeEventListener("click", onCancel);
+      nameInput.removeEventListener("input", markTyped);
       nameModal.hidden = true;
       state.naming = false;
     };
@@ -1444,6 +1582,9 @@ function addUploadedFiles(fileList) {
     setStatus("Pick video files (mp4, mov, etc.)");
     return 0;
   }
+
+  // Warm the classifier so the content-based name lands quickly
+  loadVisionModel().catch(() => {});
 
   if (!state.booted || !scene) {
     state.pendingUploads.push(...files);
