@@ -37,9 +37,6 @@ function getDeviceId() {
 // { id, title, blurb, src: "./media/name.mp4", position: [x, y, z], demo: true }
 const CATALOG = [];
 
-/** Map popup shows pins within this ground radius (meters). */
-const MAP_RADIUS_M = 40;
-
 const gate = document.getElementById("gate");
 const field = document.getElementById("field");
 const enterBtn = document.getElementById("enter-btn");
@@ -71,8 +68,7 @@ const radar = document.getElementById("radar");
 const mapModal = document.getElementById("map-modal");
 const mapBackdrop = document.getElementById("map-backdrop");
 const mapClose = document.getElementById("map-close");
-const mapRotator = document.getElementById("map-rotator");
-const mapPins = document.getElementById("map-pins");
+const mapViewport = document.getElementById("map-viewport");
 const mapList = document.getElementById("map-list");
 const mapSupport = document.getElementById("map-support");
 const guide = document.getElementById("guide");
@@ -99,11 +95,12 @@ const state = {
   geoWatchId: null,
   demoGeoReady: false,
   mapOpen: false,
-  mapPinEls: new Map(),
   mapArrowEls: new Map(),
   mapRowEls: new Map(),
   mapListAt: 0,
-  mapYaw: null,
+  leafletMap: null,
+  leafletMarkers: new Map(),
+  leafletYou: null,
   nodes: [],
   clock: new THREE.Clock(),
   hasGyro: false,
@@ -305,7 +302,10 @@ function anchorDemoVideosToLaunch() {
     node.lng = ll.lng;
   }
   state.demoGeoReady = true;
-  if (state.mapOpen) refreshMapList();
+  if (state.mapOpen) {
+    refreshMapList();
+    syncLeafletMarkers();
+  }
 }
 
 function aimMetersOnGround(distance = 3.5) {
@@ -594,7 +594,7 @@ function createNode(item, index) {
 function disposeNode(node) {
   scene.remove(node.group);
   node.radar?.remove();
-  removeMapPin(node);
+  removeLeafletMarker(node);
   try {
     node.video.pause();
   } catch {
@@ -632,6 +632,7 @@ function removeNode(node) {
   else updateDeleteControls();
 
   if (state.mapOpen) refreshMapList();
+  syncLeafletMarkers();
   setStatus(`Removed ${node.title}`);
 }
 
@@ -829,7 +830,7 @@ function updateRadar() {
 }
 
 function getLookYaw() {
-  if (!camera) return state.mapYaw ?? 0;
+  if (!camera) return state.lastYaw ?? 0;
   camera.getWorldDirection(_forward);
   let x = _forward.x;
   let z = _forward.z;
@@ -844,8 +845,9 @@ function getLookYaw() {
     z = _upHeading.z * sign;
   }
 
-  if (Math.hypot(x, z) < 0.05) return state.mapYaw ?? 0;
-  return Math.atan2(x, -z);
+  if (Math.hypot(x, z) < 0.05) return state.lastYaw ?? 0;
+  state.lastYaw = Math.atan2(x, -z);
+  return state.lastYaw;
 }
 
 function nodeGroundOffset(node) {
@@ -866,23 +868,138 @@ function nodeGroundOffset(node) {
   };
 }
 
-function ensureMapPin(node) {
-  let el = state.mapPinEls.get(node.id);
-  if (el) return el;
-
-  el = document.createElement("div");
-  el.className = node.deletable || node.worldLocked ? "map-pin map-pin--user" : "map-pin";
-  el.innerHTML = `<span class="map-pin-dot"></span><p class="map-pin-label"></p>`;
-  mapPins?.appendChild(el);
-  state.mapPinEls.set(node.id, el);
-  return el;
+function removeLeafletMarker(node) {
+  const marker = state.leafletMarkers.get(node.id);
+  if (!marker) return;
+  marker.remove();
+  state.leafletMarkers.delete(node.id);
 }
 
-function removeMapPin(node) {
-  const el = state.mapPinEls.get(node.id);
-  if (!el) return;
-  el.remove();
-  state.mapPinEls.delete(node.id);
+/** Add/move a marker for every geo-tagged video; drop markers for removed ones. */
+function syncLeafletMarkers() {
+  if (!state.leafletMap || !window.L) return;
+  const L = window.L;
+  const liveIds = new Set();
+
+  for (const node of state.nodes) {
+    if (node.lat == null || node.lng == null) continue;
+    liveIds.add(node.id);
+    let marker = state.leafletMarkers.get(node.id);
+    if (!marker) {
+      const icon = L.divIcon({
+        className: node.deletable ? "map-marker map-marker--mine" : "map-marker",
+        html: `<span class="map-marker-dot"></span>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      marker = L.marker([node.lat, node.lng], { icon, title: node.title }).addTo(
+        state.leafletMap
+      );
+      marker.on("click", () => openTheater(node));
+      state.leafletMarkers.set(node.id, marker);
+    } else {
+      marker.setLatLng([node.lat, node.lng]);
+    }
+  }
+
+  for (const [id, marker] of state.leafletMarkers) {
+    if (!liveIds.has(id)) {
+      marker.remove();
+      state.leafletMarkers.delete(id);
+    }
+  }
+}
+
+/** Zoom/pan to fit the user and every geo-tagged video. */
+function fitMapToPins() {
+  if (!state.leafletMap || !window.L) return;
+  const L = window.L;
+  const origin = state.userGeo || state.originGeo;
+  const points = origin ? [[origin.lat, origin.lng]] : [];
+  for (const node of state.nodes) {
+    if (node.lat != null && node.lng != null) points.push([node.lat, node.lng]);
+  }
+  if (!points.length) return;
+  if (points.length === 1) {
+    state.leafletMap.setView(points[0], 17);
+  } else {
+    state.leafletMap.fitBounds(L.latLngBounds(points), {
+      padding: [32, 32],
+      maxZoom: 18,
+    });
+  }
+}
+
+let leafletPromise = null;
+
+function loadStylesheet(href) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`link[href="${href}"]`)) {
+      resolve();
+      return;
+    }
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    link.onload = resolve;
+    link.onerror = () => reject(new Error(`Failed to load ${href}`));
+    document.head.appendChild(link);
+  });
+}
+
+function loadLeaflet() {
+  if (!leafletPromise) {
+    leafletPromise = (async () => {
+      await loadStylesheet(
+        "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+      );
+      await loadScript("https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js");
+      return window.L;
+    })().catch((err) => {
+      leafletPromise = null;
+      throw err;
+    });
+  }
+  return leafletPromise;
+}
+
+/** Build the real map once; safe to call again on every open. */
+async function ensureLeafletMap(origin) {
+  const L = await loadLeaflet();
+  if (!state.leafletMap) {
+    const el = document.getElementById("leaflet-map");
+    state.leafletMap = L.map(el, {
+      zoomControl: true,
+      attributionControl: true,
+      center: [origin.lat, origin.lng],
+      zoom: 16,
+      maxZoom: 19,
+    });
+    L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      {
+        subdomains: "abcd",
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      }
+    ).addTo(state.leafletMap);
+
+    const youIcon = L.divIcon({
+      className: "map-you-icon",
+      html: `<span class="map-you-arrow"></span>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    });
+    state.leafletYou = L.marker([origin.lat, origin.lng], {
+      icon: youIcon,
+      interactive: false,
+      zIndexOffset: 1000,
+    }).addTo(state.leafletMap);
+  }
+  // Container was hidden (display:none) while created, so Leaflet needs a nudge
+  requestAnimationFrame(() => state.leafletMap?.invalidateSize());
+  syncLeafletMarkers();
 }
 
 /** Under ¼ mile → feet; over → quarter-mile steps ("5½ miles"). */
@@ -1025,47 +1142,21 @@ function escapeHtml(text) {
     .replace(/"/g, "&quot;");
 }
 
+/** Per-frame while the map is open: move the "you" marker, rotate its heading,
+ * and rotate each list row's arrow relative to where you're currently facing. */
 function updateMapView() {
-  if (!state.mapOpen || !mapRotator || !mapPins) return;
+  if (!state.mapOpen) return;
+  const yaw = getLookYaw();
 
-  // Smooth toward the target heading along the shortest arc to kill jitter
-  const target = getLookYaw();
-  let yaw = state.mapYaw ?? target;
-  const delta = Math.atan2(Math.sin(target - yaw), Math.cos(target - yaw));
-  yaw += delta * 0.2;
-  state.mapYaw = yaw;
-
-  // Heading-up: rotate world under a fixed forward arrow
-  mapRotator.style.transform = `rotate(${(-yaw * 180) / Math.PI}deg)`;
-
-  const size = mapPins.clientWidth || 280;
-  const half = size * 0.5;
-  const pxPerM = (half - 28) / MAP_RADIUS_M;
-
-  const liveIds = new Set();
-  for (const node of state.nodes) {
-    liveIds.add(node.id);
-    const off = nodeGroundOffset(node);
-    const el = ensureMapPin(node);
-    const label = el.querySelector(".map-pin-label");
-    if (label) label.textContent = node.title;
-
-    const x = half + off.east * pxPerM;
-    const y = half - off.north * pxPerM;
-    // Counter-rotate labels so text stays upright while the map turns
-    el.style.left = `${x}px`;
-    el.style.top = `${y}px`;
-    el.style.transform = `translate(-50%, -50%) rotate(${(yaw * 180) / Math.PI}deg)`;
-  }
-
-  for (const [id, el] of state.mapPinEls) {
-    if (!liveIds.has(id)) {
-      el.remove();
-      state.mapPinEls.delete(id);
+  const origin = state.userGeo || state.originGeo;
+  if (state.leafletMap && state.leafletYou) {
+    if (origin) state.leafletYou.setLatLng([origin.lat, origin.lng]);
+    const arrowEl = state.leafletYou.getElement()?.querySelector(".map-you-arrow");
+    if (arrowEl) {
+      arrowEl.style.transform = `rotate(${(yaw * 180) / Math.PI}deg)`;
     }
   }
 
-  // Rotate each list row's arrow toward its video, relative to heading
   for (const node of state.nodes) {
     const arrow = state.mapArrowEls.get(node.id);
     if (!arrow) continue;
@@ -1075,18 +1166,39 @@ function updateMapView() {
   }
 }
 
-function openMapModal() {
+async function openMapModal() {
   if (!mapModal || state.watching) return;
   state.mapOpen = true;
-  state.mapYaw = null;
   mapModal.hidden = false;
-  if (mapSupport) {
-    mapSupport.textContent = state.userGeo || state.originGeo
-      ? "Map turns with you — forward is up."
-      : "Map turns with you — enable location to see pins on GPS.";
-  }
   refreshMapList();
-  updateMapView();
+
+  const origin = state.userGeo || state.originGeo;
+  if (mapSupport) {
+    mapSupport.textContent = origin
+      ? "Pinch to zoom, drag to pan."
+      : "Enable location to see the map.";
+  }
+
+  if (!origin) {
+    if (mapViewport) {
+      mapViewport.innerHTML = `<p class="map-placeholder">Enable location to see videos on the map.</p>`;
+    }
+    return;
+  }
+
+  if (mapViewport && !mapViewport.querySelector("#leaflet-map")) {
+    mapViewport.innerHTML = `<div id="leaflet-map" class="leaflet-map"></div>`;
+  }
+
+  try {
+    await ensureLeafletMap(origin);
+    fitMapToPins();
+  } catch (err) {
+    console.warn("Map failed to load", err);
+    if (mapViewport) {
+      mapViewport.innerHTML = `<p class="map-placeholder">Map couldn’t load — check your connection.</p>`;
+    }
+  }
 }
 
 function closeMapModal() {
@@ -1512,7 +1624,10 @@ async function syncSharedSpots() {
 
   if (added) {
     updateGeoAnchors();
-    if (state.mapOpen) refreshMapList();
+    if (state.mapOpen) {
+      refreshMapList();
+      syncLeafletMarkers();
+    }
     setStatus(
       added === 1 ? "Loaded 1 shared pin" : `Loaded ${added} shared pins`
     );
@@ -1807,7 +1922,10 @@ async function placeNamedVideo(file, name) {
   );
   state.nodes.push(node);
   updateGeoAnchors();
-  if (state.mapOpen) refreshMapList();
+  if (state.mapOpen) {
+    refreshMapList();
+    syncLeafletMarkers();
+  }
   setStatus(`“${name}” pinned where you’re aiming`);
 
   // Map-list thumbnail for this fresh upload (shared pins get Cloudinary's)

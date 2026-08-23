@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=29" />
+    <link rel="stylesheet" href="styles.css?v=30" />
   </head>
   <body>
     <div id="app">
@@ -202,14 +202,10 @@
             </button>
           </header>
           <p class="map-support" id="map-support">
-            Map turns with you — forward is up.
+            Pinch to zoom, drag to pan.
           </p>
           <div class="map-viewport" id="map-viewport">
-            <div class="map-rotator" id="map-rotator">
-              <div class="map-grid" aria-hidden="true"></div>
-              <div class="map-pins" id="map-pins"></div>
-            </div>
-            <div class="map-you" aria-label="You"></div>
+            <div id="leaflet-map" class="leaflet-map"></div>
           </div>
           <ul class="map-list" id="map-list"></ul>
         </div>
@@ -223,6 +219,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=29"></script>
+    <script type="module" src="app.js?v=30"></script>
   </body>
 </html>
