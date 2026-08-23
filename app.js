@@ -101,6 +101,7 @@ const state = {
   mapOpen: false,
   mapPinEls: new Map(),
   mapArrowEls: new Map(),
+  mapRowEls: new Map(),
   mapListAt: 0,
   mapYaw: null,
   nodes: [],
@@ -925,74 +926,96 @@ function lookupPlace(lat, lng) {
   return null;
 }
 
+function buildMapListRow(node) {
+  const li = document.createElement("li");
+  li.innerHTML = `
+    <button type="button" class="map-list-play" aria-label="Watch">
+      <span class="map-thumb"><span class="map-thumb-ph"></span></span>
+      <span class="map-list-body">
+        <span class="map-list-title"></span>
+        <span class="map-list-meta"></span>
+      </span>
+    </button>
+    <span class="map-list-arrow">
+      <svg viewBox="0 0 24 24"><path d="M12 2 L19 15 L12 11.6 L5 15 Z" /></svg>
+    </span>
+  `;
+  const play = li.querySelector(".map-list-play");
+  play.addEventListener("click", () => openTheater(node));
+  return {
+    li,
+    play,
+    thumbWrap: li.querySelector(".map-thumb"),
+    title: li.querySelector(".map-list-title"),
+    meta: li.querySelector(".map-list-meta"),
+    arrow: li.querySelector(".map-list-arrow"),
+    thumbSrc: null,
+  };
+}
+
+/** Rewrite only what changed per row — avoids re-decoding thumbnails every tick. */
 function refreshMapList() {
   if (!mapList) return;
   const rows = state.nodes
     .map((node) => {
       const off = nodeGroundOffset(node);
       const dist = Math.hypot(off.east, off.north);
-      return { node, dist, off };
+      return { node, dist };
     })
     .sort((a, b) => a.dist - b.dist);
 
   if (!rows.length) {
     mapList.innerHTML = `<li class="map-list-empty">No videos on the map yet</li>`;
+    state.mapRowEls = new Map();
     return;
   }
+  mapList.querySelector(".map-list-empty")?.remove();
 
-  mapList.innerHTML = rows
-    .map(({ node, dist }) => {
-      const place =
-        node.lat != null && node.lng != null
-          ? lookupPlace(node.lat, node.lng)
-          : null;
-      const meta = [
-        node.deletable ? "Your pin" : null,
-        formatMapDistance(dist),
-        place,
-      ]
-        .filter(Boolean)
-        .map(escapeHtml)
-        .join(" · ");
+  if (!state.mapRowEls) state.mapRowEls = new Map();
+  const liveIds = new Set();
 
-      const thumb =
-        node.thumbUrl || (node.storagePath ? thumbUrl(node.storagePath) : null);
-      const thumbHtml = thumb
-        ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />`
-        : `<span class="map-thumb-ph"></span>`;
+  rows.forEach(({ node, dist }, index) => {
+    liveIds.add(node.id);
+    let row = state.mapRowEls.get(node.id);
+    if (!row) {
+      row = buildMapListRow(node);
+      state.mapRowEls.set(node.id, row);
+    }
 
-      return `<li>
-        <button
-          type="button"
-          class="map-list-play"
-          data-watch="${escapeHtml(node.id)}"
-          aria-label="Watch ${escapeHtml(node.title)}"
-        >
-          <span class="map-thumb">${thumbHtml}</span>
-          <span class="map-list-body">
-            <span class="map-list-title">${escapeHtml(node.title)}</span>
-            <span class="map-list-meta">${meta}</span>
-          </span>
-        </button>
-        <span class="map-list-arrow" data-arrow-for="${escapeHtml(node.id)}">
-          <svg viewBox="0 0 24 24"><path d="M12 2 L19 15 L12 11.6 L5 15 Z" /></svg>
-        </span>
-      </li>`;
-    })
-    .join("");
+    // Keep DOM order matching sort order without rebuilding rows
+    const atIndex = mapList.children[index];
+    if (atIndex !== row.li) mapList.insertBefore(row.li, atIndex || null);
+
+    if (row.title.textContent !== node.title) row.title.textContent = node.title;
+    row.play.setAttribute("aria-label", `Watch ${node.title}`);
+
+    const place =
+      node.lat != null && node.lng != null ? lookupPlace(node.lat, node.lng) : null;
+    const meta = [node.deletable ? "Your pin" : null, formatMapDistance(dist), place]
+      .filter(Boolean)
+      .join(" · ");
+    if (row.meta.textContent !== meta) row.meta.textContent = meta;
+
+    const thumb =
+      node.thumbUrl || (node.storagePath ? thumbUrl(node.storagePath) : null);
+    if (thumb && row.thumbSrc !== thumb) {
+      row.thumbSrc = thumb;
+      row.thumbWrap.innerHTML = `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />`;
+    }
+  });
+
+  for (const [id, row] of state.mapRowEls) {
+    if (!liveIds.has(id)) {
+      row.li.remove();
+      state.mapRowEls.delete(id);
+    }
+  }
 
   state.mapArrowEls = new Map();
-  mapList.querySelectorAll("[data-arrow-for]").forEach((el) => {
-    state.mapArrowEls.set(el.dataset.arrowFor, el);
-  });
+  for (const [id, row] of state.mapRowEls) {
+    state.mapArrowEls.set(id, row.arrow);
+  }
 }
-
-mapList?.addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-watch]");
-  if (!btn) return;
-  const node = state.nodes.find((n) => n.id === btn.dataset.watch);
-  if (node) openTheater(node);
-});
 
 function escapeHtml(text) {
   return String(text)
