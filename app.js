@@ -44,6 +44,38 @@ const CATALOG = [
     position: [-2.8, 1.5, 2.8],
     demo: true,
   },
+  {
+    id: "paris",
+    title: "Paris Fireflies",
+    blurb: "Far north",
+    src: "./media/paris-fireflies.mp4",
+    position: [0.8, 1.5, -5.2],
+    demo: true,
+  },
+  {
+    id: "nexus",
+    title: "Nexus Board",
+    blurb: "Due east",
+    src: "./media/nexus-board.mp4",
+    position: [4.3, 1.45, 0.4],
+    demo: true,
+  },
+  {
+    id: "arrivals",
+    title: "Arrivals Table",
+    blurb: "Due west",
+    src: "./media/arrivals-table.mp4",
+    position: [-4.4, 1.4, 0.8],
+    demo: true,
+  },
+  {
+    id: "stock",
+    title: "Stock Scanner",
+    blurb: "Behind you",
+    src: "./media/stock-scanner.mp4",
+    position: [-1.2, 1.5, 4.2],
+    demo: true,
+  },
 ];
 
 /** Map popup shows pins within this ground radius (meters). */
