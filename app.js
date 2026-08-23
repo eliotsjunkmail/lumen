@@ -31,80 +31,10 @@ function getDeviceId() {
   return id;
 }
 
-const CATALOG = [
-  {
-    id: "bloom",
-    title: "Bloom",
-    blurb: "Dead ahead",
-    src: "./media/flower.mp4",
-    position: [0, 1.35, -4.0],
-    demo: true,
-  },
-  {
-    id: "pulse",
-    title: "Pulse",
-    blurb: "North-east",
-    src: "./media/clip-a.mp4",
-    position: [3.2, 1.45, -2.4],
-    demo: true,
-  },
-  {
-    id: "drift",
-    title: "Drift",
-    blurb: "North-west",
-    src: "./media/clip-b.mp4",
-    position: [-3.4, 1.25, -2.6],
-    demo: true,
-  },
-  {
-    id: "rush",
-    title: "Rush",
-    blurb: "Over your shoulder",
-    src: "./media/clip-c.mp4",
-    position: [2.0, 1.55, 3.6],
-    demo: true,
-  },
-  {
-    id: "glow",
-    title: "Glow",
-    blurb: "Far west",
-    src: "./media/flower.mp4",
-    position: [-2.8, 1.5, 2.8],
-    demo: true,
-  },
-  {
-    id: "paris",
-    title: "Paris Fireflies",
-    blurb: "Far north",
-    src: "./media/paris-fireflies.mp4",
-    position: [0.8, 1.5, -5.2],
-    demo: true,
-  },
-  {
-    id: "nexus",
-    title: "Nexus Board",
-    blurb: "Due east",
-    src: "./media/nexus-board.mp4",
-    position: [4.3, 1.45, 0.4],
-    demo: true,
-  },
-  {
-    id: "arrivals",
-    title: "Arrivals Table",
-    blurb: "Due west",
-    src: "./media/arrivals-table.mp4",
-    position: [-4.4, 1.4, 0.8],
-    demo: true,
-  },
-  {
-    id: "stock",
-    title: "Stock Scanner",
-    blurb: "Behind you",
-    src: "./media/stock-scanner.mp4",
-    position: [-1.2, 1.5, 4.2],
-    demo: true,
-  },
-];
+// Sample clips are off by default — the field starts with shared pins only.
+// To showcase clips for every visitor, add entries here (files in ./media):
+// { id, title, blurb, src: "./media/name.mp4", position: [x, y, z], demo: true }
+const CATALOG = [];
 
 /** Map popup shows pins within this ground radius (meters). */
 const MAP_RADIUS_M = 40;
@@ -1015,8 +945,8 @@ function openMapModal() {
   mapModal.hidden = false;
   if (mapSupport) {
     mapSupport.textContent = state.userGeo || state.originGeo
-      ? "Map turns with you — forward is up. Samples sit where you opened Lumen."
-      : "Map turns with you — enable location to place samples on GPS.";
+      ? "Map turns with you — forward is up."
+      : "Map turns with you — enable location to see pins on GPS.";
   }
   refreshMapList();
   updateMapView();
