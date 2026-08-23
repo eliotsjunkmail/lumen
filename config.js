@@ -4,7 +4,7 @@
 //   cloud name — shown on the dashboard home
 //   preset — Settings → Upload → Upload presets → Add (Signing mode: Unsigned)
 export const CLOUDINARY_CLOUD_NAME = "wroi2a2s";
-export const CLOUDINARY_UPLOAD_PRESET = "";
+export const CLOUDINARY_UPLOAD_PRESET = "Lumenaug2026";
 
 export function isCloudConfigured() {
   return Boolean(CLOUDINARY_CLOUD_NAME && CLOUDINARY_UPLOAD_PRESET);
