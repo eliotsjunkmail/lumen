@@ -102,6 +102,7 @@ const state = {
   clock: new THREE.Clock(),
   hasGyro: false,
   orientReady: false,
+  northAligned: false,
 };
 
 let renderer;
@@ -124,6 +125,8 @@ const _place = new THREE.Vector3();
 const _corner = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
 const _upHeading = new THREE.Vector3();
+const _northQuat = new THREE.Quaternion();
+const _northForward = new THREE.Vector3();
 
 function distanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6378137;
@@ -710,7 +713,7 @@ function getScreenOrientRad() {
   return THREE.MathUtils.degToRad(angle);
 }
 
-function setDeviceQuaternion(alphaDeg, betaDeg, gammaDeg) {
+function setDeviceQuaternion(alphaDeg, betaDeg, gammaDeg, compassDeg) {
   const alpha = THREE.MathUtils.degToRad(alphaDeg);
   const beta = THREE.MathUtils.degToRad(betaDeg);
   const gamma = THREE.MathUtils.degToRad(gammaDeg);
@@ -721,6 +724,23 @@ function setDeviceQuaternion(alphaDeg, betaDeg, gammaDeg) {
   _deviceQuat.setFromEuler(_euler);
   _deviceQuat.multiply(_q1);
   _deviceQuat.multiply(_q0.setFromAxisAngle(_zee, -orient));
+
+  // Align scene north (-Z) with real compass north once, so GPS directions
+  // stored while recording stay true across sessions and devices.
+  if (!state.northAligned && compassDeg != null && Number.isFinite(compassDeg)) {
+    _northForward.set(0, 0, -1).applyQuaternion(_deviceQuat);
+    _northForward.y = 0;
+    // Wait until the phone is upright enough for a stable heading
+    if (_northForward.lengthSq() > 0.12) {
+      _northForward.normalize();
+      const sceneYaw = Math.atan2(_northForward.x, -_northForward.z);
+      const trueYaw = THREE.MathUtils.degToRad(compassDeg);
+      _northQuat.setFromAxisAngle(_worldUp, sceneYaw - trueYaw);
+      state.northAligned = true;
+    }
+  }
+  if (state.northAligned) _deviceQuat.premultiply(_northQuat);
+
   state.orientReady = true;
 }
 
@@ -1118,7 +1138,15 @@ function enableOrientation() {
     if (state.watching) return;
     if (event.alpha == null || event.beta == null || event.gamma == null) return;
     state.hasGyro = true;
-    setDeviceQuaternion(event.alpha, event.beta, event.gamma);
+    // iOS exposes a true compass heading; absolute Android events encode it
+    // in alpha (0 = facing north → heading = 360 - alpha)
+    let compass = null;
+    if (typeof event.webkitCompassHeading === "number" && event.webkitCompassHeading >= 0) {
+      compass = event.webkitCompassHeading;
+    } else if (event.absolute === true) {
+      compass = (360 - event.alpha) % 360;
+    }
+    setDeviceQuaternion(event.alpha, event.beta, event.gamma, compass);
   };
 
   let listening = false;
