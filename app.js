@@ -74,6 +74,9 @@ const mapRotator = document.getElementById("map-rotator");
 const mapPins = document.getElementById("map-pins");
 const mapList = document.getElementById("map-list");
 const mapSupport = document.getElementById("map-support");
+const guide = document.getElementById("guide");
+const guideArrow = document.getElementById("guide-arrow");
+const guideLabel = document.getElementById("guide-label");
 
 const state = {
   offsetYaw: 0,
@@ -127,6 +130,7 @@ const _worldUp = new THREE.Vector3(0, 1, 0);
 const _upHeading = new THREE.Vector3();
 const _northQuat = new THREE.Quaternion();
 const _northForward = new THREE.Vector3();
+const _camLocal = new THREE.Vector3();
 
 function distanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6378137;
@@ -978,6 +982,56 @@ function closeMapModal() {
   mapModal.hidden = true;
 }
 
+/** Translucent arrow that points the way to the nearest video. */
+function updateGuideArrow() {
+  if (!guide || !camera) return;
+
+  if (state.watching || state.mapOpen) {
+    guide.classList.remove("is-on");
+    return;
+  }
+
+  let best = null;
+  let bestDist = Infinity;
+  for (const node of state.nodes) {
+    if (!node.group.visible) continue;
+    if (node.lat != null && !node.inRange) continue;
+    const d = camera.position.distanceTo(node.group.position);
+    if (d < 0.35) continue;
+    if (d < bestDist) {
+      bestDist = d;
+      best = node;
+    }
+  }
+
+  // Nothing to point at, or it's already on screen — fade out
+  if (!best || isNodeInView(best)) {
+    guide.classList.remove("is-on");
+    return;
+  }
+
+  _camLocal.copy(best.group.position);
+  camera.worldToLocal(_camLocal);
+
+  let rot;
+  if (_camLocal.z > 0) {
+    // Target is behind — steer a hard turn toward its side
+    rot = (_camLocal.x >= 0 ? 1 : -1) * Math.PI * 0.72;
+  } else {
+    rot = Math.atan2(_camLocal.x, _camLocal.y);
+  }
+
+  const radius = 92;
+  const ox = Math.sin(rot) * radius;
+  const oy = -Math.cos(rot) * radius;
+  guide.style.transform = `translate(calc(-50% + ${ox}px), calc(-50% + ${oy}px))`;
+  guideArrow.style.transform = `rotate(${THREE.MathUtils.radToDeg(rot)}deg)`;
+
+  const feet = Math.max(1, Math.round(bestDist * 3.28084));
+  guideLabel.textContent = `${best.title} · ${feet} ft`;
+  guide.classList.add("is-on");
+}
+
 async function ensurePreview(node) {
   if (!node || node.previewing || state.watching) return;
   try {
@@ -1222,6 +1276,7 @@ function animate() {
   updateCameraRig(dt);
   updateNodes(t);
   updateRadar();
+  updateGuideArrow();
   updateMapView();
   if (state.mapOpen && t - state.mapListAt > 1.25) {
     state.mapListAt = t;

@@ -462,6 +462,56 @@ button {
   box-shadow: 0 0 10px rgba(198, 255, 74, 0.55);
 }
 
+.guide {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.16s ease-out;
+}
+
+.guide.is-on {
+  opacity: 1;
+}
+
+.field.is-watching .guide {
+  opacity: 0 !important;
+}
+
+.guide-arrow {
+  width: 46px;
+  height: 46px;
+  transform-origin: 50% 50%;
+  transition: transform 0.16s ease-out;
+}
+
+.guide-arrow path {
+  fill: rgba(198, 255, 74, 0.28);
+  stroke: rgba(198, 255, 74, 0.7);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.guide-label {
+  margin: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(6, 16, 12, 0.42);
+  border: 1px solid rgba(238, 247, 240, 0.14);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(238, 247, 240, 0.88);
+  white-space: nowrap;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
 .aim {
   top: 50%;
   left: 50%;

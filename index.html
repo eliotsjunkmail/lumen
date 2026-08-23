@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=24" />
+    <link rel="stylesheet" href="styles.css?v=25" />
   </head>
   <body>
     <div id="app">
@@ -82,6 +82,13 @@
           <div class="radar-you" aria-hidden="true"></div>
           <div class="radar-dots" id="radar-dots" aria-hidden="true"></div>
         </button>
+
+        <div class="guide" id="guide" aria-hidden="true">
+          <svg class="guide-arrow" id="guide-arrow" viewBox="0 0 48 48">
+            <path d="M24 4 L40 30 L29 30 L29 44 L19 44 L19 30 L8 30 Z" />
+          </svg>
+          <p class="guide-label" id="guide-label"></p>
+        </div>
 
         <div class="aim" id="aim" aria-hidden="true">
           <span class="aim-corner aim-tl"></span>
@@ -216,6 +223,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=24"></script>
+    <script type="module" src="app.js?v=25"></script>
   </body>
 </html>
