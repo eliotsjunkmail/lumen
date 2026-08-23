@@ -107,6 +107,7 @@ const state = {
   mapOpen: false,
   mapPinEls: new Map(),
   mapListAt: 0,
+  mapYaw: null,
   nodes: [],
   clock: new THREE.Clock(),
   hasGyro: false,
@@ -132,6 +133,7 @@ const _right = new THREE.Vector3();
 const _place = new THREE.Vector3();
 const _corner = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
+const _upHeading = new THREE.Vector3();
 
 function distanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6378137;
@@ -809,11 +811,23 @@ function updateRadar() {
 }
 
 function getLookYaw() {
-  if (camera) {
-    camera.getWorldDirection(_forward);
-    return Math.atan2(_forward.x, -_forward.z);
+  if (!camera) return state.mapYaw ?? 0;
+  camera.getWorldDirection(_forward);
+  let x = _forward.x;
+  let z = _forward.z;
+
+  // Holding the phone flat to read the map collapses forward's ground
+  // projection. Fall back to the phone's top edge (camera up) for heading:
+  // looking down, camera-up points where the top of the phone faces.
+  if (Math.hypot(x, z) < 0.35) {
+    _upHeading.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    const sign = _forward.y < 0 ? 1 : -1;
+    x = _upHeading.x * sign;
+    z = _upHeading.z * sign;
   }
-  return 0;
+
+  if (Math.hypot(x, z) < 0.05) return state.mapYaw ?? 0;
+  return Math.atan2(x, -z);
 }
 
 function nodeGroundOffset(node) {
@@ -895,7 +909,13 @@ function escapeHtml(text) {
 function updateMapView() {
   if (!state.mapOpen || !mapRotator || !mapPins) return;
 
-  const yaw = getLookYaw();
+  // Smooth toward the target heading along the shortest arc to kill jitter
+  const target = getLookYaw();
+  let yaw = state.mapYaw ?? target;
+  const delta = Math.atan2(Math.sin(target - yaw), Math.cos(target - yaw));
+  yaw += delta * 0.2;
+  state.mapYaw = yaw;
+
   // Heading-up: rotate world under a fixed forward arrow
   mapRotator.style.transform = `rotate(${(-yaw * 180) / Math.PI}deg)`;
 
@@ -930,6 +950,7 @@ function updateMapView() {
 function openMapModal() {
   if (!mapModal || state.watching) return;
   state.mapOpen = true;
+  state.mapYaw = null;
   mapModal.hidden = false;
   if (mapSupport) {
     mapSupport.textContent = state.userGeo || state.originGeo
