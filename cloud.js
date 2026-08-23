@@ -17,6 +17,12 @@ export function videoUrl(path) {
   return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/${path}`;
 }
 
+/** Small poster frame Cloudinary renders from the video's first second. */
+export function thumbUrl(path) {
+  const jpg = path.replace(/\.\w+$/, ".jpg");
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/so_0,w_120,h_120,c_fill/${jpg}`;
+}
+
 export async function loadSpots() {
   // Cache-buster: the list JSON is CDN-cached, keep pins reasonably fresh
   const res = await fetch(

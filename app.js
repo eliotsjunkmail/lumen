@@ -5,6 +5,7 @@ import {
   publishSpot,
   deleteSpot,
   videoUrl,
+  thumbUrl,
 } from "./cloud.js";
 
 const GEO_RANGE_FT = 25;
@@ -99,6 +100,7 @@ const state = {
   demoGeoReady: false,
   mapOpen: false,
   mapPinEls: new Map(),
+  mapArrowEls: new Map(),
   mapListAt: 0,
   mapYaw: null,
   nodes: [],
@@ -940,21 +942,42 @@ function refreshMapList() {
 
   mapList.innerHTML = rows
     .map(({ node, dist }) => {
-      const kind = node.deletable ? "Your pin" : node.demo ? "Sample" : "Video";
       const place =
         node.lat != null && node.lng != null
           ? lookupPlace(node.lat, node.lng)
           : null;
-      const meta = [kind, formatMapDistance(dist), place]
+      const meta = [
+        node.deletable ? "Your pin" : null,
+        formatMapDistance(dist),
+        place,
+      ]
         .filter(Boolean)
         .map(escapeHtml)
         .join(" · ");
+
+      const thumb =
+        node.thumbUrl || (node.storagePath ? thumbUrl(node.storagePath) : null);
+      const thumbHtml = thumb
+        ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />`
+        : `<span class="map-thumb-ph">▶</span>`;
+
       return `<li>
-        <span class="map-list-title">${escapeHtml(node.title)}</span>
-        <span class="map-list-meta">${meta}</span>
+        <span class="map-thumb">${thumbHtml}</span>
+        <span class="map-list-body">
+          <span class="map-list-title">${escapeHtml(node.title)}</span>
+          <span class="map-list-meta">${meta}</span>
+        </span>
+        <span class="map-list-arrow" data-arrow-for="${escapeHtml(node.id)}">
+          <svg viewBox="0 0 24 24"><path d="M12 2 L19 15 L12 11.6 L5 15 Z" /></svg>
+        </span>
       </li>`;
     })
     .join("");
+
+  state.mapArrowEls = new Map();
+  mapList.querySelectorAll("[data-arrow-for]").forEach((el) => {
+    state.mapArrowEls.set(el.dataset.arrowFor, el);
+  });
 }
 
 function escapeHtml(text) {
@@ -1003,6 +1026,15 @@ function updateMapView() {
       el.remove();
       state.mapPinEls.delete(id);
     }
+  }
+
+  // Rotate each list row's arrow toward its video, relative to heading
+  for (const node of state.nodes) {
+    const arrow = state.mapArrowEls.get(node.id);
+    if (!arrow) continue;
+    const off = nodeGroundOffset(node);
+    const bearing = Math.atan2(off.east, off.north);
+    arrow.style.transform = `rotate(${((bearing - yaw) * 180) / Math.PI}deg)`;
   }
 }
 
@@ -1740,6 +1772,14 @@ async function placeNamedVideo(file, name) {
   updateGeoAnchors();
   if (state.mapOpen) refreshMapList();
   setStatus(`“${name}” pinned where you’re aiming`);
+
+  // Map-list thumbnail for this fresh upload (shared pins get Cloudinary's)
+  grabVideoFrame(file)
+    .then((frame) => {
+      node.thumbUrl = frame.toDataURL("image/jpeg", 0.65);
+      if (state.mapOpen) refreshMapList();
+    })
+    .catch(() => {});
 
   // Publish in the background so anyone, on any browser, can load this pin
   if (cloudConfigured()) {
