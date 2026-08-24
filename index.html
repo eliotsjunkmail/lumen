@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=34" />
+    <link rel="stylesheet" href="styles.css?v=35" />
   </head>
   <body>
     <div id="app">
@@ -153,15 +153,29 @@
               </div>
               <p class="theater-caption" id="theater-title">Untitled</p>
             </div>
+            <button type="button" id="theater-done" class="theater-done">
+              Close
+            </button>
             <button
               type="button"
               id="theater-delete"
-              class="theater-delete"
+              class="theater-delete-link"
               hidden
-              aria-label="Delete this video"
             >
-              Delete
+              delete
             </button>
+          </div>
+        </div>
+
+        <div id="confirm-modal" class="confirm-modal" hidden>
+          <div class="confirm-panel" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <p class="confirm-brand">Lumen</p>
+            <h2 class="confirm-title" id="confirm-title">Are you sure?</h2>
+            <p class="confirm-copy" id="confirm-copy">This video will be removed.</p>
+            <div class="confirm-actions">
+              <button type="button" id="confirm-cancel" class="ghost-btn">Cancel</button>
+              <button type="button" id="confirm-ok" class="confirm-ok">Delete</button>
+            </div>
           </div>
         </div>
 

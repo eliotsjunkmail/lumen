@@ -619,7 +619,10 @@ button {
 .field.is-watching .hud-top,
 .field.is-watching .hud-bottom,
 .field.is-watching .radar,
-.field.is-watching .aim {
+.field.is-watching .aim,
+.field.is-watching .status,
+.field.is-watching .guide,
+.field.is-watching .delete-btn {
   opacity: 0;
   pointer-events: none;
 }
@@ -629,8 +632,11 @@ button {
   display: grid;
   place-items: center;
   padding: calc(18px + var(--safe-top)) 18px calc(24px + var(--safe-bottom));
-  background: rgba(2, 8, 5, 0.28);
+  background: rgba(2, 8, 5, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   animation: fade-in 0.28s ease both;
+  z-index: 12;
 }
 
 .theater[hidden] {
@@ -713,19 +719,103 @@ button {
   pointer-events: none;
 }
 
-.theater-delete {
-  min-height: 2.4rem;
-  padding: 0 1.1rem;
+.theater-done {
+  min-height: 2.6rem;
+  min-width: 7.5rem;
+  padding: 0 1.4rem;
   border-radius: 999px;
-  border: 1px solid rgba(255, 90, 80, 0.55);
-  background: rgba(6, 16, 12, 0.55);
-  color: #ffb4ad;
-  font-weight: 600;
+  border: 1px solid var(--line);
+  background: rgba(6, 16, 12, 0.72);
+  color: var(--foam);
+  font-weight: 700;
 }
 
-.theater-delete:active {
-  background: rgba(255, 90, 80, 0.85);
+.theater-done:active {
+  transform: scale(0.97);
+  background: rgba(238, 247, 240, 0.14);
+}
+
+.theater-delete-link {
+  margin: 0;
+  padding: 0.15rem 0.4rem;
+  border: 0;
+  background: transparent;
+  color: rgba(238, 247, 240, 0.55);
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.theater-delete-link:active {
+  color: #ffb4ad;
+}
+
+.confirm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: calc(18px + var(--safe-top)) 16px calc(24px + var(--safe-bottom));
+  background: rgba(2, 8, 5, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.confirm-modal[hidden] {
+  display: none !important;
+}
+
+.confirm-panel {
+  width: min(100%, 360px);
+  display: grid;
+  gap: 0.65rem;
+  padding: 1.15rem 1.15rem 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--glass-strong);
+}
+
+.confirm-brand {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: var(--signal);
+  letter-spacing: -0.04em;
+}
+
+.confirm-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.confirm-copy {
+  margin: 0;
+  color: rgba(238, 247, 240, 0.7);
+  font-size: 0.92rem;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+}
+
+.confirm-ok {
+  min-height: 2.6rem;
+  padding: 0 1.1rem;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 90, 80, 0.92);
   color: #fff;
+  font-weight: 700;
+}
+
+.confirm-ok:active {
+  transform: scale(0.97);
 }
 
 .ghost-btn {

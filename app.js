@@ -56,6 +56,11 @@ const videoInputField = document.getElementById("video-input-field");
 const deleteBtn = document.getElementById("delete-btn");
 const theaterDelete = document.getElementById("theater-delete");
 const theaterClose = document.getElementById("theater-close");
+const theaterDone = document.getElementById("theater-done");
+const confirmModal = document.getElementById("confirm-modal");
+const confirmCopy = document.getElementById("confirm-copy");
+const confirmCancel = document.getElementById("confirm-cancel");
+const confirmOk = document.getElementById("confirm-ok");
 const nameModal = document.getElementById("name-modal");
 const nameForm = document.getElementById("name-form");
 const nameInput = document.getElementById("name-input");
@@ -643,10 +648,10 @@ function updateDeleteControls() {
   if (!canDelete) {
     deleteBtn.style.visibility = "hidden";
   }
-  if (state.watching && state.focused?.deletable) {
-    theaterDelete.hidden = false;
-  } else if (!state.watching) {
-    theaterDelete.hidden = true;
+  if (theaterDelete) {
+    theaterDelete.hidden = !(
+      state.watching && state.watchingNode?.deletable
+    );
   }
 }
 
@@ -1413,6 +1418,7 @@ function openTheater(node, opts = {}) {
   if (!node) return;
   const fromMap = Boolean(opts.fromMap) || state.mapOpen;
   closeMapModal();
+  closeConfirmModal();
   state.watching = true;
   state.watchingNode = node;
   state.theaterFromMap = fromMap;
@@ -1441,6 +1447,7 @@ function openTheater(node, opts = {}) {
 
 function closeTheaterMode() {
   const returnToMap = state.theaterFromMap;
+  closeConfirmModal();
   state.watching = false;
   state.watchingNode = null;
   state.theaterFromMap = false;
@@ -1453,6 +1460,23 @@ function closeTheaterMode() {
   if (state.focused) ensurePreview(state.focused);
   updateDeleteControls();
   if (returnToMap) openMapModal();
+}
+
+function openConfirmModal(message) {
+  if (!confirmModal) return;
+  if (confirmCopy) confirmCopy.textContent = message;
+  confirmModal.hidden = false;
+}
+
+function closeConfirmModal() {
+  if (!confirmModal) return;
+  confirmModal.hidden = true;
+}
+
+function requestTheaterDelete() {
+  const node = state.watchingNode || state.focused;
+  if (!node?.deletable) return;
+  openConfirmModal(`Delete “${node.title}”? This can’t be undone.`);
 }
 
 async function startCamera() {
@@ -1777,6 +1801,7 @@ async function enterField() {
 enterBtn.addEventListener("click", enterField);
 watchBtn.addEventListener("click", () => openTheater(state.focused));
 theaterClose.addEventListener("click", closeTheaterMode);
+theaterDone?.addEventListener("click", closeTheaterMode);
 theaterVideo.addEventListener("click", () => {
   if (theaterVideo.paused) {
     theaterVideo.play().catch(() => {});
@@ -1801,7 +1826,16 @@ deleteBtn.addEventListener("click", (e) => {
 });
 theaterDelete.addEventListener("click", (e) => {
   e.stopPropagation();
+  requestTheaterDelete();
+});
+confirmCancel?.addEventListener("click", closeConfirmModal);
+confirmModal?.addEventListener("click", (e) => {
+  if (e.target === confirmModal) closeConfirmModal();
+});
+confirmOk?.addEventListener("click", (e) => {
+  e.stopPropagation();
   const node = state.watchingNode || state.focused;
+  closeConfirmModal();
   if (node?.deletable) removeNode(node);
 });
 
@@ -2132,6 +2166,20 @@ videoInputField?.addEventListener("change", onPickVideos);
 
 // Desktop keyboard nudge
 window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (confirmModal && !confirmModal.hidden) {
+      closeConfirmModal();
+      return;
+    }
+    if (state.watching) {
+      closeTheaterMode();
+      return;
+    }
+    if (state.mapOpen) {
+      closeMapModal();
+      return;
+    }
+  }
   if (state.watching) return;
   const step = 0.08;
   if (e.key === "ArrowLeft") state.offsetYaw += step;
@@ -2140,11 +2188,4 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown") state.offsetPitch -= step * 0.7;
   state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -1.2, 1.2);
   if (e.key === "Enter" && state.focused) openTheater(state.focused);
-  if (e.key === "Escape") {
-    if (state.mapOpen) {
-      closeMapModal();
-      return;
-    }
-    closeTheaterMode();
-  }
 });
