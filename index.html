@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=32" />
+    <link rel="stylesheet" href="styles.css?v=33" />
   </head>
   <body>
     <div id="app">
@@ -127,34 +127,41 @@
         </footer>
 
         <div id="theater" class="theater" hidden>
+          <button
+            type="button"
+            id="theater-close"
+            class="theater-close"
+            aria-label="Close video"
+          >
+            ×
+          </button>
           <div class="theater-panel">
-            <div class="theater-meta">
-              <p class="theater-brand">Lumen</p>
-              <p class="theater-title" id="theater-title">Untitled</p>
-              <button
-                type="button"
-                id="theater-delete"
-                class="theater-delete"
-                hidden
-                aria-label="Delete this video"
-              >
-                ×
-              </button>
-              <button
-                type="button"
-                id="theater-close"
-                class="theater-close"
-                aria-label="Close video"
-              >
-                ×
-              </button>
-            </div>
             <div class="theater-screen-wrap">
-              <video id="theater-video" class="theater-video" playsinline controls></video>
+              <video
+                id="theater-video"
+                class="theater-video"
+                playsinline
+                webkit-playsinline
+                loop
+                autoplay
+              ></video>
+              <div class="theater-reticle" aria-hidden="true">
+                <span class="aim-corner aim-tl"></span>
+                <span class="aim-corner aim-tr"></span>
+                <span class="aim-corner aim-bl"></span>
+                <span class="aim-corner aim-br"></span>
+              </div>
+              <p class="theater-caption" id="theater-title">Untitled</p>
             </div>
-            <div class="theater-actions">
-              <button type="button" id="close-theater" class="ghost-btn">Back to field</button>
-            </div>
+            <button
+              type="button"
+              id="theater-delete"
+              class="theater-delete"
+              hidden
+              aria-label="Delete this video"
+            >
+              Delete
+            </button>
           </div>
         </div>
 
@@ -227,6 +234,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=32"></script>
+    <script type="module" src="app.js?v=33"></script>
   </body>
 </html>

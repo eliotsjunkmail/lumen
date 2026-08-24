@@ -50,7 +50,6 @@ const radarDots = document.getElementById("radar-dots");
 const theater = document.getElementById("theater");
 const theaterVideo = document.getElementById("theater-video");
 const theaterTitle = document.getElementById("theater-title");
-const closeTheater = document.getElementById("close-theater");
 const uploadNote = document.getElementById("upload-note");
 const videoInputGate = document.getElementById("video-input-gate");
 const videoInputField = document.getElementById("video-input-field");
@@ -85,6 +84,7 @@ const state = {
   focused: null,
   watchingNode: null,
   watching: false,
+  theaterFromMap: false,
   booting: false,
   booted: false,
   pendingUploads: [],
@@ -896,7 +896,7 @@ function syncLeafletMarkers() {
       marker = L.marker([node.lat, node.lng], { icon, title: node.title }).addTo(
         state.leafletMap
       );
-      marker.on("click", () => openTheater(node));
+      marker.on("click", () => openTheater(node, { fromMap: true }));
       state.leafletMarkers.set(node.id, marker);
     } else {
       marker.setLatLng([node.lat, node.lng]);
@@ -1056,7 +1056,7 @@ function buildMapListRow(node) {
     </span>
   `;
   const play = li.querySelector(".map-list-play");
-  play.addEventListener("click", () => openTheater(node));
+  play.addEventListener("click", () => openTheater(node, { fromMap: true }));
   return {
     li,
     play,
@@ -1316,11 +1316,13 @@ function setFocus(node) {
   updateDeleteControls();
 }
 
-function openTheater(node) {
+function openTheater(node, opts = {}) {
   if (!node) return;
+  const fromMap = Boolean(opts.fromMap) || state.mapOpen;
   closeMapModal();
   state.watching = true;
   state.watchingNode = node;
+  state.theaterFromMap = fromMap;
   pausePreviews(null);
   field.classList.add("is-watching");
   theater.hidden = false;
@@ -1329,16 +1331,26 @@ function openTheater(node) {
   const knownW = node.video?.videoWidth || 0;
   const knownH = node.video?.videoHeight || 0;
   theaterVideo.style.aspectRatio = knownW > 1 && knownH > 1 ? `${knownW} / ${knownH}` : "9 / 16";
+  theaterVideo.loop = true;
+  theaterVideo.removeAttribute("controls");
+  theaterVideo.setAttribute("playsinline", "");
+  theaterVideo.setAttribute("webkit-playsinline", "");
   theaterVideo.src = node.src;
   theaterVideo.muted = false;
-  theaterVideo.play().catch(() => setStatus("Tap play on the video to start"));
+  theaterVideo.play().catch(() => {
+    // Autoplay with sound can be blocked — retry muted then unmute on tap
+    theaterVideo.muted = true;
+    theaterVideo.play().catch(() => setStatus("Tap the video to start"));
+  });
   setStatus(`Watching ${node.title}`);
   updateDeleteControls();
 }
 
 function closeTheaterMode() {
+  const returnToMap = state.theaterFromMap;
   state.watching = false;
   state.watchingNode = null;
+  state.theaterFromMap = false;
   field.classList.remove("is-watching");
   theater.hidden = true;
   theaterDelete.hidden = true;
@@ -1347,6 +1359,7 @@ function closeTheaterMode() {
   theaterVideo.load();
   if (state.focused) ensurePreview(state.focused);
   updateDeleteControls();
+  if (returnToMap) openMapModal();
 }
 
 async function startCamera() {
@@ -1670,8 +1683,14 @@ async function enterField() {
 
 enterBtn.addEventListener("click", enterField);
 watchBtn.addEventListener("click", () => openTheater(state.focused));
-closeTheater.addEventListener("click", closeTheaterMode);
 theaterClose.addEventListener("click", closeTheaterMode);
+theaterVideo.addEventListener("click", () => {
+  if (theaterVideo.paused) {
+    theaterVideo.play().catch(() => {});
+  } else if (theaterVideo.muted) {
+    theaterVideo.muted = false;
+  }
+});
 theaterVideo.addEventListener("loadedmetadata", () => {
   const w = theaterVideo.videoWidth;
   const h = theaterVideo.videoHeight;
