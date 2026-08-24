@@ -101,6 +101,7 @@ const state = {
   geoWatchId: null,
   demoGeoReady: false,
   mapOpen: false,
+  selectedClusterId: null,
   mapArrowEls: new Map(),
   mapRowEls: new Map(),
   mapListAt: 0,
@@ -929,9 +930,10 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-function movieCalloutHtml(count) {
+function movieCalloutHtml(count, selected = false) {
+  const sel = selected ? " is-selected" : "";
   return `
-    <div class="map-callout">
+    <div class="map-callout${sel}">
       <div class="map-callout-bubble">
         <span class="map-callout-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
@@ -947,6 +949,28 @@ function movieCalloutHtml(count) {
   `.trim();
 }
 
+function selectMapCluster(clusterId) {
+  state.selectedClusterId =
+    state.selectedClusterId === clusterId ? null : clusterId;
+  syncLeafletMarkers();
+  refreshMapList();
+  if (mapSupport) {
+    mapSupport.textContent = state.selectedClusterId
+      ? "Showing clips at this pin · tap again to clear."
+      : "Pinch to zoom, drag to pan.";
+  }
+}
+
+function clearMapClusterSelection() {
+  if (!state.selectedClusterId) return;
+  state.selectedClusterId = null;
+  syncLeafletMarkers();
+  refreshMapList();
+  if (mapSupport && state.mapOpen) {
+    mapSupport.textContent = "Pinch to zoom, drag to pan.";
+  }
+}
+
 /** Add/move a callout for each video cluster; drop markers for removed ones. */
 function syncLeafletMarkers() {
   if (!state.leafletMap || !window.L) return;
@@ -955,47 +979,52 @@ function syncLeafletMarkers() {
   const clusters = clusterMapNodes(geoNodes);
   const liveIds = new Set(clusters.map((c) => c.id));
 
+  if (state.selectedClusterId && !liveIds.has(state.selectedClusterId)) {
+    state.selectedClusterId = null;
+  }
+
   for (const cluster of clusters) {
     let marker = state.leafletMarkers.get(cluster.id);
+    const selected = state.selectedClusterId === cluster.id;
     const title =
       cluster.count === 1
         ? cluster.primary.title
         : `${cluster.count} videos here`;
+    const iconOpts = {
+      className: "map-callout-icon-wrap",
+      html: movieCalloutHtml(cluster.count, selected),
+      iconSize: [0, 0],
+      iconAnchor: [0, 0],
+    };
     const bindClick = (m, c) => {
       m.off("click");
-      m.on("click", () => {
-        const target = c.primary || c.nodes[0];
-        if (target) openTheater(target, { fromMap: true });
+      m.on("click", (e) => {
+        L.DomEvent.stopPropagation(e);
+        selectMapCluster(c.id);
       });
     };
     if (!marker) {
-      const icon = L.divIcon({
-        className: "map-callout-icon-wrap",
-        html: movieCalloutHtml(cluster.count),
-        iconSize: [0, 0],
-        iconAnchor: [0, 0],
-      });
       marker = L.marker([cluster.lat, cluster.lng], {
-        icon,
+        icon: L.divIcon(iconOpts),
         title,
         riseOnHover: true,
+        zIndexOffset: selected ? 600 : 400,
       }).addTo(state.leafletMap);
       marker._lumenCount = cluster.count;
+      marker._lumenSelected = selected;
       bindClick(marker, cluster);
       state.leafletMarkers.set(cluster.id, marker);
     } else {
       marker.setLatLng([cluster.lat, cluster.lng]);
-      if (marker._lumenCount !== cluster.count) {
+      if (
+        marker._lumenCount !== cluster.count ||
+        marker._lumenSelected !== selected
+      ) {
         marker._lumenCount = cluster.count;
-        marker.setIcon(
-          L.divIcon({
-            className: "map-callout-icon-wrap",
-            html: movieCalloutHtml(cluster.count),
-            iconSize: [0, 0],
-            iconAnchor: [0, 0],
-          })
-        );
+        marker._lumenSelected = selected;
+        marker.setIcon(L.divIcon(iconOpts));
       }
+      marker.setZIndexOffset(selected ? 600 : 400);
       marker.options.title = title;
       bindClick(marker, cluster);
     }
@@ -1083,15 +1112,18 @@ async function ensureLeafletMap(origin) {
 
     const youIcon = L.divIcon({
       className: "map-you-icon",
-      html: `<span class="map-you-arrow"></span>`,
-      iconSize: [24, 24],
-      iconAnchor: [12, 12],
+      html: `<span class="map-you-dot" aria-hidden="true"><span class="map-you-pulse"></span></span>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
     });
     state.leafletYou = L.marker([origin.lat, origin.lng], {
       icon: youIcon,
       interactive: false,
-      zIndexOffset: 1000,
+      // Stay under callout pins so the blue dot never covers them
+      zIndexOffset: -200,
     }).addTo(state.leafletMap);
+
+    state.leafletMap.on("click", () => clearMapClusterSelection());
   }
   // Container was hidden (display:none) while created, so Leaflet needs a nudge
   requestAnimationFrame(() => state.leafletMap?.invalidateSize());
@@ -1149,8 +1181,11 @@ function buildMapListRow(node) {
         <span class="map-list-meta"></span>
       </span>
     </button>
-    <span class="map-list-arrow">
-      <svg viewBox="0 0 24 24"><path d="M12 2 L19 15 L12 11.6 L5 15 Z" /></svg>
+    <span class="map-list-dir">
+      <span class="map-list-arrow">
+        <svg viewBox="0 0 24 24"><path d="M12 2 L19 15 L12 11.6 L5 15 Z" /></svg>
+      </span>
+      <span class="map-list-dist"></span>
     </span>
   `;
   const play = li.querySelector(".map-list-play");
@@ -1161,6 +1196,7 @@ function buildMapListRow(node) {
     thumbWrap: li.querySelector(".map-thumb"),
     title: li.querySelector(".map-list-title"),
     meta: li.querySelector(".map-list-meta"),
+    dist: li.querySelector(".map-list-dist"),
     arrow: li.querySelector(".map-list-arrow"),
     thumbSrc: null,
   };
@@ -1169,7 +1205,17 @@ function buildMapListRow(node) {
 /** Rewrite only what changed per row — avoids re-decoding thumbnails every tick. */
 function refreshMapList() {
   if (!mapList) return;
-  const rows = state.nodes
+
+  let sourceNodes = state.nodes;
+  if (state.selectedClusterId) {
+    const geoNodes = state.nodes.filter((n) => n.lat != null && n.lng != null);
+    const cluster = clusterMapNodes(geoNodes).find(
+      (c) => c.id === state.selectedClusterId
+    );
+    sourceNodes = cluster ? cluster.nodes : state.nodes;
+  }
+
+  const rows = sourceNodes
     .map((node) => {
       const off = nodeGroundOffset(node);
       const dist = Math.hypot(off.east, off.north);
@@ -1178,7 +1224,11 @@ function refreshMapList() {
     .sort((a, b) => a.dist - b.dist);
 
   if (!rows.length) {
-    mapList.innerHTML = `<li class="map-list-empty">No videos on the map yet</li>`;
+    mapList.innerHTML = `<li class="map-list-empty">${
+      state.selectedClusterId
+        ? "No clips at this pin"
+        : "No videos on the map yet"
+    }</li>`;
     state.mapRowEls = new Map();
     return;
   }
@@ -1204,10 +1254,13 @@ function refreshMapList() {
 
     const place =
       node.lat != null && node.lng != null ? lookupPlace(node.lat, node.lng) : null;
-    const meta = [node.deletable ? "Your pin" : null, formatMapDistance(dist), place]
+    const meta = [node.deletable ? "Your pin" : null, place]
       .filter(Boolean)
       .join(" · ");
     if (row.meta.textContent !== meta) row.meta.textContent = meta;
+
+    const distLabel = formatMapDistance(dist);
+    if (row.dist.textContent !== distLabel) row.dist.textContent = distLabel;
 
     const thumb =
       node.thumbUrl || (node.storagePath ? thumbUrl(node.storagePath) : null);
@@ -1247,10 +1300,6 @@ function updateMapView() {
   const origin = state.userGeo || state.originGeo;
   if (state.leafletMap && state.leafletYou) {
     if (origin) state.leafletYou.setLatLng([origin.lat, origin.lng]);
-    const arrowEl = state.leafletYou.getElement()?.querySelector(".map-you-arrow");
-    if (arrowEl) {
-      arrowEl.style.transform = `rotate(${(yaw * 180) / Math.PI}deg)`;
-    }
   }
 
   for (const node of state.nodes) {
@@ -1300,6 +1349,7 @@ async function openMapModal() {
 function closeMapModal() {
   if (!mapModal) return;
   state.mapOpen = false;
+  state.selectedClusterId = null;
   mapModal.hidden = true;
 }
 
