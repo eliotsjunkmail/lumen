@@ -220,6 +220,7 @@ async function requestLocationAccess({ interactive = false } = {}) {
     state.userGeo = geo;
     state.originGeo = state.originGeo || { ...geo };
     startGeoWatch();
+    updateRadarMapBackground();
     anchorDemoVideosToLaunch();
     updateGeoAnchors();
     setLocationUi(
@@ -287,12 +288,36 @@ function startGeoWatch() {
         accuracy: pos.coords.accuracy,
       };
       if (!state.originGeo) state.originGeo = { ...state.userGeo };
+      updateRadarMapBackground();
       anchorDemoVideosToLaunch();
       updateGeoAnchors();
     },
     (err) => console.warn(err),
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
   );
+}
+
+/** Light street-map tile behind the camera radar, centered on the user. */
+function latLngToTile(lat, lng, zoom) {
+  const n = 2 ** zoom;
+  const x = Math.floor(((lng + 180) / 360) * n);
+  const latRad = (lat * Math.PI) / 180;
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
+  );
+  return { x, y, z: zoom };
+}
+
+function updateRadarMapBackground() {
+  if (!radar) return;
+  const geo = state.userGeo || state.originGeo;
+  if (!geo) return;
+  const key = `${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`;
+  if (radar.dataset.mapKey === key) return;
+  radar.dataset.mapKey = key;
+  const { x, y, z } = latLngToTile(geo.lat, geo.lng, 15);
+  // Match the Nearby map: light OSM street tiles
+  radar.style.backgroundImage = `url("https://tile.openstreetmap.org/${z}/${x}/${y}.png")`;
 }
 
 /** Place sample clips around wherever this user opened the site. */
