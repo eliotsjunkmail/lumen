@@ -650,7 +650,7 @@ button {
 
 .theater-meta {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 10px;
 }
@@ -686,7 +686,29 @@ button {
   background: rgba(255, 90, 80, 0.85);
 }
 
+.theater-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(238, 247, 240, 0.06);
+  color: var(--foam);
+  font-size: 1.45rem;
+  line-height: 1;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.theater-close:active {
+  transform: scale(0.94);
+  background: rgba(238, 247, 240, 0.16);
+}
+
 .theater-screen-wrap {
+  display: grid;
+  place-items: center;
+  max-height: min(72vh, 640px);
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -697,7 +719,10 @@ button {
 .theater-video {
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: auto;
+  max-height: min(72vh, 640px);
+  aspect-ratio: 9 / 16;
+  object-fit: contain;
   background: #000;
 }
 

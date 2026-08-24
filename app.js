@@ -56,6 +56,7 @@ const videoInputGate = document.getElementById("video-input-gate");
 const videoInputField = document.getElementById("video-input-field");
 const deleteBtn = document.getElementById("delete-btn");
 const theaterDelete = document.getElementById("theater-delete");
+const theaterClose = document.getElementById("theater-close");
 const nameModal = document.getElementById("name-modal");
 const nameForm = document.getElementById("name-form");
 const nameInput = document.getElementById("name-input");
@@ -1325,6 +1326,9 @@ function openTheater(node) {
   theater.hidden = false;
   theaterTitle.textContent = node.title;
   theaterDelete.hidden = !node.deletable;
+  const knownW = node.video?.videoWidth || 0;
+  const knownH = node.video?.videoHeight || 0;
+  theaterVideo.style.aspectRatio = knownW > 1 && knownH > 1 ? `${knownW} / ${knownH}` : "9 / 16";
   theaterVideo.src = node.src;
   theaterVideo.muted = false;
   theaterVideo.play().catch(() => setStatus("Tap play on the video to start"));
@@ -1667,6 +1671,12 @@ async function enterField() {
 enterBtn.addEventListener("click", enterField);
 watchBtn.addEventListener("click", () => openTheater(state.focused));
 closeTheater.addEventListener("click", closeTheaterMode);
+theaterClose.addEventListener("click", closeTheaterMode);
+theaterVideo.addEventListener("loadedmetadata", () => {
+  const w = theaterVideo.videoWidth;
+  const h = theaterVideo.videoHeight;
+  if (w > 1 && h > 1) theaterVideo.style.aspectRatio = `${w} / ${h}`;
+});
 radar?.addEventListener("click", (e) => {
   e.stopPropagation();
   openMapModal();
