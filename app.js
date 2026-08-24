@@ -869,37 +869,130 @@ function nodeGroundOffset(node) {
   };
 }
 
-function removeLeafletMarker(node) {
-  const marker = state.leafletMarkers.get(node.id);
-  if (!marker) return;
-  marker.remove();
-  state.leafletMarkers.delete(node.id);
+function removeLeafletMarker(_node) {
+  // Clusters are rebuilt from live nodes; drop stale markers via sync.
+  if (state.leafletMap) syncLeafletMarkers();
 }
 
-/** Add/move a marker for every geo-tagged video; drop markers for removed ones. */
+/** Group videos within ~40 m so one callout can show the count. */
+function clusterMapNodes(nodes) {
+  const clusters = [];
+  const assigned = new Set();
+  const maxM = 40;
+
+  for (const node of nodes) {
+    if (node.lat == null || node.lng == null || assigned.has(node.id)) continue;
+    const group = [node];
+    assigned.add(node.id);
+    for (const other of nodes) {
+      if (other.lat == null || other.lng == null || assigned.has(other.id)) continue;
+      const d = haversineMeters(node.lat, node.lng, other.lat, other.lng);
+      if (d <= maxM) {
+        group.push(other);
+        assigned.add(other.id);
+      }
+    }
+    const lat = group.reduce((s, n) => s + n.lat, 0) / group.length;
+    const lng = group.reduce((s, n) => s + n.lng, 0) / group.length;
+    // Prefer the most recently added node in this cluster as the tap target
+    group.sort(
+      (a, b) => state.nodes.indexOf(b) - state.nodes.indexOf(a)
+    );
+    clusters.push({
+      id: `c:${group
+        .map((n) => n.id)
+        .sort()
+        .join("|")}`,
+      lat,
+      lng,
+      count: group.length,
+      nodes: group,
+      primary: group[0],
+    });
+  }
+  return clusters;
+}
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function movieCalloutHtml(count) {
+  return `
+    <div class="map-callout">
+      <div class="map-callout-bubble">
+        <span class="map-callout-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+            <rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" stroke-width="2"/>
+            <path d="M8 5V3M16 5V3M3 10h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M10 12.2l5 2.8-5 2.8v-5.6z" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="map-callout-count">${count}</span>
+      </div>
+      <span class="map-callout-tail" aria-hidden="true"></span>
+    </div>
+  `.trim();
+}
+
+/** Add/move a callout for each video cluster; drop markers for removed ones. */
 function syncLeafletMarkers() {
   if (!state.leafletMap || !window.L) return;
   const L = window.L;
-  const liveIds = new Set();
+  const geoNodes = state.nodes.filter((n) => n.lat != null && n.lng != null);
+  const clusters = clusterMapNodes(geoNodes);
+  const liveIds = new Set(clusters.map((c) => c.id));
 
-  for (const node of state.nodes) {
-    if (node.lat == null || node.lng == null) continue;
-    liveIds.add(node.id);
-    let marker = state.leafletMarkers.get(node.id);
+  for (const cluster of clusters) {
+    let marker = state.leafletMarkers.get(cluster.id);
+    const title =
+      cluster.count === 1
+        ? cluster.primary.title
+        : `${cluster.count} videos here`;
+    const bindClick = (m, c) => {
+      m.off("click");
+      m.on("click", () => {
+        const target = c.primary || c.nodes[0];
+        if (target) openTheater(target, { fromMap: true });
+      });
+    };
     if (!marker) {
       const icon = L.divIcon({
-        className: node.deletable ? "map-marker map-marker--mine" : "map-marker",
-        html: `<span class="map-marker-dot"></span>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
+        className: "map-callout-icon-wrap",
+        html: movieCalloutHtml(cluster.count),
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
       });
-      marker = L.marker([node.lat, node.lng], { icon, title: node.title }).addTo(
-        state.leafletMap
-      );
-      marker.on("click", () => openTheater(node, { fromMap: true }));
-      state.leafletMarkers.set(node.id, marker);
+      marker = L.marker([cluster.lat, cluster.lng], {
+        icon,
+        title,
+        riseOnHover: true,
+      }).addTo(state.leafletMap);
+      marker._lumenCount = cluster.count;
+      bindClick(marker, cluster);
+      state.leafletMarkers.set(cluster.id, marker);
     } else {
-      marker.setLatLng([node.lat, node.lng]);
+      marker.setLatLng([cluster.lat, cluster.lng]);
+      if (marker._lumenCount !== cluster.count) {
+        marker._lumenCount = cluster.count;
+        marker.setIcon(
+          L.divIcon({
+            className: "map-callout-icon-wrap",
+            html: movieCalloutHtml(cluster.count),
+            iconSize: [0, 0],
+            iconAnchor: [0, 0],
+          })
+        );
+      }
+      marker.options.title = title;
+      bindClick(marker, cluster);
     }
   }
 

@@ -988,20 +988,68 @@ button {
   transition: transform 0.12s ease-out;
 }
 
-.map-marker-dot {
-  display: block;
-  width: 12px;
-  height: 12px;
-  margin: 2px;
-  border-radius: 50%;
-  background: var(--foam);
-  border: 1.5px solid rgba(6, 16, 12, 0.6);
-  box-shadow: 0 0 8px rgba(238, 247, 240, 0.5);
+.map-callout-icon-wrap {
+  background: transparent !important;
+  border: none !important;
 }
 
-.map-marker--mine .map-marker-dot {
-  background: var(--signal);
-  box-shadow: 0 0 10px rgba(198, 255, 74, 0.75);
+.map-callout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.28));
+  transform: translate(-50%, calc(-100% - 2px));
+  cursor: pointer;
+}
+
+.map-callout-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.55rem 0.22rem 0.22rem;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  white-space: nowrap;
+}
+
+.map-callout-icon {
+  display: grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 50%;
+  background: #e03131;
+  color: #fff;
+  flex: 0 0 auto;
+}
+
+.map-callout-icon svg {
+  display: block;
+}
+
+.map-callout-count {
+  font-family: var(--font-body, Manrope, sans-serif);
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  padding-right: 0.15rem;
+  color: #111;
+}
+
+.map-callout-tail {
+  width: 0;
+  height: 0;
+  margin-top: -1px;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 8px solid #fff;
+}
+
+.map-marker-dot {
+  display: none;
 }
 
 .map-list {
