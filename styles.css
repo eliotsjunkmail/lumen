@@ -570,6 +570,47 @@ button {
   border-top: 0;
 }
 
+.react-burst {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  z-index: 4;
+  transform: translate(-50%, -50%) scale(0.4);
+  font-size: 4.5rem;
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.45));
+}
+
+.react-burst.is-on {
+  animation: react-pop 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes react-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.35);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, -55%) scale(1.15);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -62%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -78%) scale(0.85);
+  }
+}
+
+.field.is-watching .react-burst {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .delete-btn {
   top: 0;
   left: 0;

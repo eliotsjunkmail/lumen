@@ -57,6 +57,7 @@ const deleteBtn = document.getElementById("delete-btn");
 const theaterDelete = document.getElementById("theater-delete");
 const theaterClose = document.getElementById("theater-close");
 const theaterDone = document.getElementById("theater-done");
+const reactBurst = document.getElementById("react-burst");
 const confirmModal = document.getElementById("confirm-modal");
 const confirmCopy = document.getElementById("confirm-copy");
 const confirmCancel = document.getElementById("confirm-cancel");
@@ -420,7 +421,7 @@ function setStatus(message, ms = 2800) {
   statusTimer = setTimeout(() => statusEl.classList.remove("is-on"), ms);
 }
 
-function createLabelTexture(title, blurb, { reserveDelete = false } = {}) {
+function createLabelTexture(title, blurb, { reserveDelete = false, thumbs = 0 } = {}) {
   const c = document.createElement("canvas");
   c.width = 1024;
   c.height = 256;
@@ -438,14 +439,107 @@ function createLabelTexture(title, blurb, { reserveDelete = false } = {}) {
   ctx.fillStyle = "#eef7f0";
   ctx.font = "800 64px Syne, sans-serif";
   // Leave room on the right for the HTML × when this is a deletable upload
-  const titleMax = reserveDelete ? 20 : 28;
+  const titleMax = reserveDelete ? 18 : thumbs ? 22 : 28;
   ctx.fillText(title.slice(0, titleMax), 64, 175);
   ctx.fillStyle = "rgba(238, 247, 240, 0.7)";
   ctx.font = "600 34px Manrope, sans-serif";
   ctx.fillText(blurb.slice(0, reserveDelete ? 28 : 40), 260, 110);
+  if (thumbs > 0) {
+    ctx.font = "800 72px Manrope, Apple Color Emoji, Segoe UI Emoji, sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(thumbs > 1 ? `👍${thumbs}` : "👍", 960, 155);
+    ctx.textAlign = "left";
+  }
   const texture = new THREE.CanvasTexture(c);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
+}
+
+function createThumbsBadgeTexture(count) {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, 256, 256);
+  ctx.fillStyle = "rgba(6, 16, 12, 0.55)";
+  roundRect(ctx, 24, 24, 208, 208, 48);
+  ctx.fill();
+  ctx.font = "160px Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("👍", 128, 118);
+  if (count > 1) {
+    ctx.font = "700 56px Manrope, sans-serif";
+    ctx.fillStyle = "#eef7f0";
+    ctx.fillText(String(count), 128, 200);
+  }
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function refreshNodeChrome(node) {
+  if (!node?.label) return;
+  const old = node.label.material.map;
+  node.label.material.map = createLabelTexture(node.title, node.blurb || "", {
+    reserveDelete: Boolean(node.deletable),
+    thumbs: node.thumbs || 0,
+  });
+  node.label.material.needsUpdate = true;
+  old?.dispose?.();
+
+  const count = node.thumbs || 0;
+  if (count > 0) {
+    if (!node.thumbsBadge) {
+      const badge = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.55, 0.55),
+        new THREE.MeshBasicMaterial({
+          transparent: true,
+          side: THREE.DoubleSide,
+          depthTest: false,
+        })
+      );
+      badge.position.set(0.95, 0.55, 0.04);
+      node.group.add(badge);
+      node.thumbsBadge = badge;
+    }
+    const prev = node.thumbsBadge.material.map;
+    node.thumbsBadge.material.map = createThumbsBadgeTexture(count);
+    node.thumbsBadge.material.needsUpdate = true;
+    node.thumbsBadge.visible = true;
+    prev?.dispose?.();
+    // Keep badge in the top-right of the current video plane
+    const w = node.screen?.geometry?.parameters?.width || 2.4;
+    const h = node.screen?.geometry?.parameters?.height || 1.35;
+    node.thumbsBadge.position.set(w * 0.42, h * 0.38, 0.04);
+  } else if (node.thumbsBadge) {
+    node.thumbsBadge.visible = false;
+  }
+}
+
+function showThumbsBurst() {
+  if (!reactBurst) return;
+  reactBurst.hidden = false;
+  reactBurst.classList.remove("is-on");
+  // Retrigger CSS animation
+  void reactBurst.offsetWidth;
+  reactBurst.classList.add("is-on");
+  clearTimeout(showThumbsBurst._t);
+  showThumbsBurst._t = setTimeout(() => {
+    reactBurst.classList.remove("is-on");
+    reactBurst.hidden = true;
+  }, 1100);
+}
+
+function addThumbsUp(node) {
+  if (!node) return;
+  node.thumbs = (node.thumbs || 0) + 1;
+  refreshNodeChrome(node);
+  showThumbsBurst();
+  if (state.focused === node) {
+    focusLabel.textContent = `${node.title} 👍`;
+  }
+  setStatus(`👍 on “${node.title}”`);
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -533,6 +627,9 @@ function applyVideoAspect(node) {
   node.beacon.position.set(0, -finalH * 0.5 - 0.35, 0.05);
   node.screen.position.y = 0;
   node.frame.position.y = 0;
+  if (node.thumbsBadge) {
+    node.thumbsBadge.position.set(finalW * 0.42, finalH * 0.38, 0.04);
+  }
 }
 
 function createNode(item, index) {
@@ -593,6 +690,7 @@ function createNode(item, index) {
     ...item,
     demo: Boolean(item.demo),
     deletable: Boolean(item.deletable),
+    thumbs: Number(item.thumbs) || 0,
     lat: item.lat ?? null,
     lng: item.lng ?? null,
     worldLocked: Boolean(item.worldLocked),
@@ -620,6 +718,8 @@ function createNode(item, index) {
   if (video.readyState >= 1) onMeta();
   else video.addEventListener("loadedmetadata", onMeta, { once: true });
 
+  if (node.thumbs > 0) refreshNodeChrome(node);
+
   return node;
 }
 
@@ -645,6 +745,11 @@ function disposeNode(node) {
   node.label.material.map?.dispose();
   node.label.material.dispose();
   node.beacon.material.dispose();
+  if (node.thumbsBadge) {
+    node.thumbsBadge.geometry.dispose();
+    node.thumbsBadge.material.map?.dispose();
+    node.thumbsBadge.material.dispose();
+  }
 }
 
 function removeNode(node) {
@@ -1475,7 +1580,9 @@ function setFocus(node) {
   state.focused = node;
   field.classList.toggle("is-locked", Boolean(node));
   if (node) {
-    focusLabel.textContent = node.title;
+    focusLabel.textContent = node.thumbs
+      ? `${node.title} 👍${node.thumbs > 1 ? node.thumbs : ""}`
+      : node.title;
     hudHint.textContent = node.blurb || "Aim locked";
     watchBtn.disabled = false;
     ensurePreview(node);
@@ -1500,7 +1607,9 @@ function openTheater(node, opts = {}) {
   pausePreviews(null);
   field.classList.add("is-watching");
   theater.hidden = false;
-  theaterTitle.textContent = node.title;
+  theaterTitle.textContent = node.thumbs
+    ? `${node.title} 👍${node.thumbs > 1 ? node.thumbs : ""}`
+    : node.title;
   theaterDelete.hidden = !node.deletable;
   const knownW = node.video?.videoWidth || 0;
   const knownH = node.video?.videoHeight || 0;
@@ -1700,6 +1809,82 @@ function onResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+// —— Thumbs-up gesture → stamp 👍 on the focused video ——
+let gestureRecognizer = null;
+let gestureLoadPromise = null;
+let lastGestureVideoTs = -1;
+let lastGestureCheckAt = 0;
+let lastThumbUpAt = 0;
+let thumbGestureArmed = true;
+
+async function ensureGestureRecognizer() {
+  if (gestureRecognizer) return gestureRecognizer;
+  if (gestureLoadPromise) return gestureLoadPromise;
+  gestureLoadPromise = (async () => {
+    const mod = await import(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm"
+    );
+    const vision = await mod.FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+    gestureRecognizer = await mod.GestureRecognizer.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+        delegate: "GPU",
+      },
+      runningMode: "VIDEO",
+      numHands: 1,
+      cannedGesturesClassifierOptions: {
+        categoryAllowlist: ["Thumb_Up"],
+        scoreThreshold: 0.65,
+      },
+    });
+    return gestureRecognizer;
+  })().catch((err) => {
+    console.warn("Gesture recognizer unavailable", err);
+    gestureLoadPromise = null;
+    return null;
+  });
+  return gestureLoadPromise;
+}
+
+function updateThumbsGesture(nowMs) {
+  if (!gestureRecognizer || !camEl) return;
+  if (state.watching || state.mapOpen || state.booting) return;
+  if (!state.focused || !state.focused.group?.visible) return;
+  if (camEl.readyState < 2) return;
+  if (nowMs - lastGestureCheckAt < 180) return;
+  lastGestureCheckAt = nowMs;
+
+  // MediaPipe requires strictly increasing timestamps
+  let ts = nowMs;
+  if (ts <= lastGestureVideoTs) ts = lastGestureVideoTs + 1;
+  lastGestureVideoTs = ts;
+
+  let result;
+  try {
+    result = gestureRecognizer.recognizeForVideo(camEl, ts);
+  } catch (err) {
+    return;
+  }
+
+  const top = result?.gestures?.[0]?.[0];
+  const isThumb =
+    top && top.categoryName === "Thumb_Up" && top.score >= 0.65;
+
+  if (!isThumb) {
+    thumbGestureArmed = true;
+    return;
+  }
+
+  // Require the hand to leave thumbs-up before another react, and a short cooldown
+  if (!thumbGestureArmed || nowMs - lastThumbUpAt < 1600) return;
+  thumbGestureArmed = false;
+  lastThumbUpAt = nowMs;
+  addThumbsUp(state.focused);
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = state.clock.getDelta();
@@ -1721,6 +1906,7 @@ function animate() {
     if (node !== state.focused) setFocus(node);
   }
 
+  updateThumbsGesture(performance.now());
   positionDeleteBtn();
   renderer.render(scene, camera);
 }
@@ -1755,6 +1941,8 @@ function bootField(message) {
   if (camEl.srcObject) {
     camEl.play().catch(() => {});
   }
+  // Warm the thumbs-up detector in the background
+  ensureGestureRecognizer().catch(() => {});
 
   if (state.pendingUploads.length) {
     state.nameQueue.push(...state.pendingUploads.splice(0));
