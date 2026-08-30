@@ -60,6 +60,7 @@ const theaterDone = document.getElementById("theater-done");
 const reactBurst = document.getElementById("react-burst");
 const recHud = document.getElementById("rec-hud");
 const recTime = document.getElementById("rec-time");
+const pinchHint = document.getElementById("pinch-hint");
 const confirmModal = document.getElementById("confirm-modal");
 const confirmCopy = document.getElementById("confirm-copy");
 const confirmCancel = document.getElementById("confirm-cancel");
@@ -1824,64 +1825,118 @@ function onResize() {
 // —— Hand gestures: pinch to record, thumbs-up to react ——
 let gestureRecognizer = null;
 let gestureLoadPromise = null;
+let gestureReady = false;
 let lastGestureVideoTs = -1;
 let lastGestureCheckAt = 0;
 let lastThumbUpAt = 0;
 let thumbGestureArmed = true;
-let pinchWasClosed = false;
+let pinchClosed = false;
 let pinchArmed = true;
+let pinchCloseSince = 0;
 let lastPinchAt = 0;
 let recordTimerId = null;
+let handSeenAt = 0;
 
 async function ensureGestureRecognizer() {
   if (gestureRecognizer) return gestureRecognizer;
   if (gestureLoadPromise) return gestureLoadPromise;
   gestureLoadPromise = (async () => {
     const mod = await import(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm"
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/+esm"
     );
     const vision = await mod.FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
     );
-    gestureRecognizer = await mod.GestureRecognizer.createFromOptions(vision, {
+    const options = {
       baseOptions: {
         modelAssetPath:
           "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
-        delegate: "GPU",
       },
       runningMode: "VIDEO",
       numHands: 1,
+      minHandDetectionConfidence: 0.4,
+      minHandPresenceConfidence: 0.4,
+      minTrackingConfidence: 0.4,
       cannedGesturesClassifierOptions: {
-        categoryAllowlist: ["Thumb_Up"],
-        scoreThreshold: 0.65,
+        categoryAllowlist: ["Thumb_Up", "None"],
+        scoreThreshold: 0.5,
       },
-    });
+    };
+
+    // GPU fails on many iPhones — fall back to CPU
+    try {
+      options.baseOptions.delegate = "GPU";
+      gestureRecognizer = await mod.GestureRecognizer.createFromOptions(
+        vision,
+        options
+      );
+    } catch (gpuErr) {
+      console.warn("Gesture GPU unavailable, using CPU", gpuErr);
+      options.baseOptions.delegate = "CPU";
+      gestureRecognizer = await mod.GestureRecognizer.createFromOptions(
+        vision,
+        options
+      );
+    }
+    gestureReady = true;
+    if (!state.watching && !state.mapOpen) {
+      setStatus("Hand gestures ready — pinch to record", 3200);
+      if (pinchHint) pinchHint.hidden = false;
+    }
     return gestureRecognizer;
   })().catch((err) => {
     console.warn("Gesture recognizer unavailable", err);
     gestureLoadPromise = null;
+    gestureReady = false;
+    setStatus("Hand gestures unavailable in this browser", 4200);
     return null;
   });
   return gestureLoadPromise;
 }
 
-function landmarkDist(a, b) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  const dz = (a.z || 0) - (b.z || 0);
-  return Math.hypot(dx, dy, dz);
+function landmarkDist2d(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-/** Thumb tip + index tip closing together (as in the pinch photos). */
-function isPinchClosed(landmarks) {
-  if (!landmarks || landmarks.length < 9) return false;
+/**
+ * Pinch ratio: thumb tip ↔ index tip, scaled by palm size.
+ * Smaller = more closed. Uses 2D only — MediaPipe z units skew 3D distance.
+ */
+function pinchRatio(landmarks) {
+  if (!landmarks || landmarks.length < 18) return 1;
   const thumbTip = landmarks[4];
   const indexTip = landmarks[8];
   const wrist = landmarks[0];
   const indexMcp = landmarks[5];
-  const scale = landmarkDist(wrist, indexMcp) || 0.2;
-  const pinch = landmarkDist(thumbTip, indexTip) / scale;
-  return pinch < 0.38;
+  const pinkyMcp = landmarks[17];
+  const scale = Math.max(
+    landmarkDist2d(wrist, indexMcp),
+    landmarkDist2d(wrist, pinkyMcp),
+    landmarkDist2d(indexMcp, pinkyMcp),
+    0.05
+  );
+  return landmarkDist2d(thumbTip, indexTip) / scale;
+}
+
+/** Hysteresis so noisy frames don’t flicker open/closed. */
+function updatePinchState(ratio) {
+  const CLOSE = 0.42;
+  const OPEN = 0.58;
+  if (!pinchClosed && ratio <= CLOSE) pinchClosed = true;
+  else if (pinchClosed && ratio >= OPEN) pinchClosed = false;
+  return pinchClosed;
+}
+
+function setPinchHint(mode, text) {
+  if (!pinchHint) return;
+  if (state.recording || state.watching || state.mapOpen || state.naming) {
+    pinchHint.hidden = true;
+    return;
+  }
+  pinchHint.hidden = false;
+  pinchHint.textContent = text;
+  pinchHint.classList.toggle("is-ready", mode === "ready");
+  pinchHint.classList.toggle("is-pinching", mode === "pinching");
 }
 
 function pickRecorderMime() {
@@ -1925,20 +1980,31 @@ function startPinchRecording() {
     return false;
   }
   if (typeof MediaRecorder === "undefined") {
-    setStatus("Recording isn’t supported in this browser");
+    setStatus("Recording isn’t supported in this browser — use Add");
+    return false;
+  }
+
+  // Ensure tracks are live
+  const liveTracks = stream.getTracks().filter((t) => t.readyState === "live");
+  if (!liveTracks.length) {
+    setStatus("Camera stream ended — reopen the lens");
     return false;
   }
 
   const mime = pickRecorderMime();
   let recorder;
   try {
-    recorder = mime
-      ? new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_500_000 })
-      : new MediaRecorder(stream);
+    const opts = mime ? { mimeType: mime } : undefined;
+    recorder = opts ? new MediaRecorder(stream, opts) : new MediaRecorder(stream);
   } catch (err) {
     console.warn(err);
-    setStatus("Couldn’t start recording");
-    return false;
+    try {
+      recorder = new MediaRecorder(stream);
+    } catch (err2) {
+      console.warn(err2);
+      setStatus("Couldn’t start recording — try Add instead");
+      return false;
+    }
   }
 
   state.recordChunks = [];
@@ -1957,7 +2023,8 @@ function startPinchRecording() {
   };
 
   try {
-    recorder.start(250);
+    // timeslice breaks some iOS builds — collect on stop instead
+    recorder.start();
   } catch (err) {
     console.warn(err);
     cancelPinchRecording();
@@ -1965,11 +2032,12 @@ function startPinchRecording() {
     return false;
   }
 
+  if (pinchHint) pinchHint.hidden = true;
   updateRecHud();
   if (recordTimerId) clearInterval(recordTimerId);
   recordTimerId = setInterval(updateRecHud, 250);
   field.classList.add("is-recording");
-  setStatus("Recording… pinch again to stop");
+  setStatus("Recording… pinch again to stop", 5000);
   return true;
 }
 
@@ -1982,6 +2050,7 @@ function cancelPinchRecording() {
   updateRecHud();
   if (recorder && recorder.state !== "inactive") {
     try {
+      recorder.onstop = null;
       recorder.stop();
     } catch {
       /* ignore */
@@ -2004,15 +2073,19 @@ function stopPinchRecording() {
     field.classList.remove("is-recording");
     updateRecHud();
 
-    if (elapsed < 600 || !chunks.length) {
-      setStatus("Clip too short — pinch and hold the take a bit longer");
+    if (elapsed < 500 || !chunks.length) {
+      setStatus("Clip too short — pinch, wait a second, pinch again");
       return;
     }
 
     const ext = mime.includes("mp4") ? "mp4" : "webm";
-    const blob = new Blob(chunks, { type: mime });
+    const blob = new Blob(chunks, { type: mime || `video/${ext}` });
+    if (blob.size < 1000) {
+      setStatus("Recording produced an empty clip — try again");
+      return;
+    }
     const file = new File([blob], `lumen-${Date.now()}.${ext}`, {
-      type: mime,
+      type: blob.type,
       lastModified: Date.now(),
     });
     setStatus("Clip captured — name it to pin");
@@ -2021,7 +2094,13 @@ function stopPinchRecording() {
 
   recorder.onstop = finish;
   try {
-    if (recorder.state === "recording") recorder.requestData?.();
+    if (recorder.state === "recording") {
+      try {
+        recorder.requestData();
+      } catch {
+        /* some browsers throw if no timeslice was used */
+      }
+    }
     recorder.stop();
   } catch (err) {
     console.warn(err);
@@ -2036,9 +2115,12 @@ function togglePinchRecording() {
 
 function updateHandGestures(nowMs) {
   if (!gestureRecognizer || !camEl) return;
-  if (state.watching || state.mapOpen || state.booting || state.naming) return;
-  if (camEl.readyState < 2) return;
-  if (nowMs - lastGestureCheckAt < 120) return;
+  if (state.watching || state.mapOpen || state.booting || state.naming) {
+    if (pinchHint) pinchHint.hidden = true;
+    return;
+  }
+  if (camEl.readyState < 2 || !camEl.videoWidth) return;
+  if (nowMs - lastGestureCheckAt < 66) return; // ~15 fps
   lastGestureCheckAt = nowMs;
 
   let ts = nowMs;
@@ -2053,21 +2135,40 @@ function updateHandGestures(nowMs) {
   }
 
   const landmarks = result?.landmarks?.[0];
-  const pinched = isPinchClosed(landmarks);
+  if (!landmarks) {
+    pinchCloseSince = 0;
+    if (!state.recording && gestureReady) {
+      setPinchHint("idle", "Show your hand, then pinch to record");
+    }
+    return;
+  }
 
-  // Rising edge: open → closed pinch toggles record
-  if (pinched && !pinchWasClosed && pinchArmed && nowMs - lastPinchAt > 700) {
+  handSeenAt = nowMs;
+  const ratio = pinchRatio(landmarks);
+  const closed = updatePinchState(ratio);
+
+  if (closed) {
+    if (!pinchCloseSince) pinchCloseSince = nowMs;
+  } else {
+    pinchCloseSince = 0;
+    pinchArmed = true;
+  }
+
+  if (!state.recording) {
+    if (closed) setPinchHint("pinching", "Pinching…");
+    else setPinchHint("ready", "Hand ready — pinch to record");
+  }
+
+  // Fire after a brief held pinch; must open again before the next one
+  const heldLongEnough = closed && nowMs - pinchCloseSince >= 120;
+  if (heldLongEnough && pinchArmed && nowMs - lastPinchAt > 700) {
     pinchArmed = false;
     lastPinchAt = nowMs;
     togglePinchRecording();
   }
-  if (!pinched) {
-    pinchArmed = true;
-  }
-  pinchWasClosed = pinched;
 
-  // Thumbs-up reacts on the focused video (skip while recording)
-  if (state.recording) return;
+  // Thumbs-up reacts on the focused video (skip while recording / pinching)
+  if (state.recording || closed) return;
   if (!state.focused || !state.focused.group?.visible) {
     thumbGestureArmed = true;
     return;
@@ -2075,7 +2176,7 @@ function updateHandGestures(nowMs) {
 
   const top = result?.gestures?.[0]?.[0];
   const isThumb =
-    top && top.categoryName === "Thumb_Up" && top.score >= 0.65;
+    top && top.categoryName === "Thumb_Up" && top.score >= 0.6;
 
   if (!isThumb) {
     thumbGestureArmed = true;

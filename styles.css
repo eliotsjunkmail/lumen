@@ -627,6 +627,39 @@ button {
   font-weight: 600;
 }
 
+.pinch-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(96px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 4;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(198, 255, 74, 0.28);
+  background: rgba(6, 16, 12, 0.72);
+  color: rgba(238, 247, 240, 0.88);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.pinch-hint.is-ready {
+  border-color: rgba(198, 255, 74, 0.55);
+  color: var(--signal);
+}
+
+.pinch-hint.is-pinching {
+  border-color: rgba(255, 90, 80, 0.55);
+  color: #ffb4ad;
+  transform: translateX(-50%) scale(1.04);
+}
+
+.pinch-hint[hidden] {
+  display: none !important;
+}
+
 @keyframes rec-blink {
   0%,
   100% {
@@ -638,6 +671,7 @@ button {
 }
 
 .field.is-watching .rec-hud,
+.field.is-watching .pinch-hint,
 .field.is-watching .react-burst {
   opacity: 0;
   pointer-events: none;
