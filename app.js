@@ -1858,7 +1858,6 @@ async function ensureGestureRecognizer() {
       minHandPresenceConfidence: 0.4,
       minTrackingConfidence: 0.4,
       cannedGesturesClassifierOptions: {
-        categoryAllowlist: ["Thumb_Up", "None"],
         scoreThreshold: 0.5,
       },
     };
