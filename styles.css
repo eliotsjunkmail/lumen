@@ -660,6 +660,32 @@ button {
   display: none !important;
 }
 
+.pinch-dot {
+  position: absolute;
+  z-index: 4;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border-radius: 50%;
+  border: 2px solid var(--signal);
+  background: rgba(198, 255, 74, 0.25);
+  box-shadow: 0 0 12px rgba(198, 255, 74, 0.65);
+  pointer-events: none;
+  transform: scale(0.85);
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.pinch-dot.is-closed {
+  background: rgba(255, 90, 80, 0.4);
+  border-color: #ff5a50;
+  box-shadow: 0 0 14px rgba(255, 90, 80, 0.75);
+  transform: scale(1.15);
+}
+
+.pinch-dot[hidden] {
+  display: none !important;
+}
+
 @keyframes rec-blink {
   0%,
   100% {
@@ -672,6 +698,7 @@ button {
 
 .field.is-watching .rec-hud,
 .field.is-watching .pinch-hint,
+.field.is-watching .pinch-dot,
 .field.is-watching .react-burst {
   opacity: 0;
   pointer-events: none;

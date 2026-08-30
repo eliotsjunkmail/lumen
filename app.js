@@ -61,6 +61,7 @@ const reactBurst = document.getElementById("react-burst");
 const recHud = document.getElementById("rec-hud");
 const recTime = document.getElementById("rec-time");
 const pinchHint = document.getElementById("pinch-hint");
+const pinchDot = document.getElementById("pinch-dot");
 const confirmModal = document.getElementById("confirm-modal");
 const confirmCopy = document.getElementById("confirm-copy");
 const confirmCancel = document.getElementById("confirm-cancel");
@@ -1822,12 +1823,12 @@ function onResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// —— Hand gestures: pinch to record, thumbs-up to react ——
-let gestureRecognizer = null;
-let gestureLoadPromise = null;
-let gestureReady = false;
-let lastGestureVideoTs = -1;
-let lastGestureCheckAt = 0;
+// —— Hand gestures: fingers-together toggles record, thumbs-up reacts ——
+let handLandmarker = null;
+let handLoadPromise = null;
+let handReady = false;
+let lastHandVideoTs = -1;
+let lastHandCheckAt = 0;
 let lastThumbUpAt = 0;
 let thumbGestureArmed = true;
 let pinchClosed = false;
@@ -1835,12 +1836,11 @@ let pinchArmed = true;
 let pinchCloseSince = 0;
 let lastPinchAt = 0;
 let recordTimerId = null;
-let handSeenAt = 0;
 
-async function ensureGestureRecognizer() {
-  if (gestureRecognizer) return gestureRecognizer;
-  if (gestureLoadPromise) return gestureLoadPromise;
-  gestureLoadPromise = (async () => {
+async function ensureHandLandmarker() {
+  if (handLandmarker) return handLandmarker;
+  if (handLoadPromise) return handLoadPromise;
+  handLoadPromise = (async () => {
     const mod = await import(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/+esm"
     );
@@ -1850,47 +1850,38 @@ async function ensureGestureRecognizer() {
     const options = {
       baseOptions: {
         modelAssetPath:
-          "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+          "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
       },
       runningMode: "VIDEO",
       numHands: 1,
-      minHandDetectionConfidence: 0.4,
-      minHandPresenceConfidence: 0.4,
-      minTrackingConfidence: 0.4,
-      cannedGesturesClassifierOptions: {
-        scoreThreshold: 0.5,
-      },
+      minHandDetectionConfidence: 0.35,
+      minHandPresenceConfidence: 0.35,
+      minTrackingConfidence: 0.35,
     };
 
     // GPU fails on many iPhones — fall back to CPU
     try {
       options.baseOptions.delegate = "GPU";
-      gestureRecognizer = await mod.GestureRecognizer.createFromOptions(
-        vision,
-        options
-      );
+      handLandmarker = await mod.HandLandmarker.createFromOptions(vision, options);
     } catch (gpuErr) {
-      console.warn("Gesture GPU unavailable, using CPU", gpuErr);
+      console.warn("Hand landmarker GPU unavailable, using CPU", gpuErr);
       options.baseOptions.delegate = "CPU";
-      gestureRecognizer = await mod.GestureRecognizer.createFromOptions(
-        vision,
-        options
-      );
+      handLandmarker = await mod.HandLandmarker.createFromOptions(vision, options);
     }
-    gestureReady = true;
+    handReady = true;
     if (!state.watching && !state.mapOpen) {
-      setStatus("Hand gestures ready — pinch to record", 3200);
+      setStatus("Hand ready — put fingers together to record", 3200);
       if (pinchHint) pinchHint.hidden = false;
     }
-    return gestureRecognizer;
+    return handLandmarker;
   })().catch((err) => {
-    console.warn("Gesture recognizer unavailable", err);
-    gestureLoadPromise = null;
-    gestureReady = false;
+    console.warn("Hand landmarker unavailable", err);
+    handLoadPromise = null;
+    handReady = false;
     setStatus("Hand gestures unavailable in this browser", 4200);
     return null;
   });
-  return gestureLoadPromise;
+  return handLoadPromise;
 }
 
 function landmarkDist2d(a, b) {
@@ -1898,8 +1889,8 @@ function landmarkDist2d(a, b) {
 }
 
 /**
- * Pinch ratio: thumb tip ↔ index tip, scaled by palm size.
- * Smaller = more closed. Uses 2D only — MediaPipe z units skew 3D distance.
+ * How closed thumb tip ↔ index tip are (0 ≈ together).
+ * Scaled by palm size so it works at any distance from the camera.
  */
 function pinchRatio(landmarks) {
   if (!landmarks || landmarks.length < 18) return 1;
@@ -1917,13 +1908,87 @@ function pinchRatio(landmarks) {
   return landmarkDist2d(thumbTip, indexTip) / scale;
 }
 
-/** Hysteresis so noisy frames don’t flicker open/closed. */
-function updatePinchState(ratio) {
-  const CLOSE = 0.42;
-  const OPEN = 0.58;
-  if (!pinchClosed && ratio <= CLOSE) pinchClosed = true;
-  else if (pinchClosed && ratio >= OPEN) pinchClosed = false;
+/**
+ * “Fingers together” — generous thresholds so a simple tip touch toggles.
+ * Absolute tip distance also counts (hand far from camera still works).
+ */
+function updatePinchState(landmarks) {
+  if (!landmarks || landmarks.length < 9) {
+    pinchClosed = false;
+    return false;
+  }
+  const tipDist = landmarkDist2d(landmarks[4], landmarks[8]);
+  const ratio = pinchRatio(landmarks);
+  const CLOSE_RATIO = 0.55;
+  const OPEN_RATIO = 0.78;
+  const CLOSE_ABS = 0.085;
+  const OPEN_ABS = 0.14;
+
+  if (!pinchClosed) {
+    if (ratio <= CLOSE_RATIO || tipDist <= CLOSE_ABS) pinchClosed = true;
+  } else if (ratio >= OPEN_RATIO && tipDist >= OPEN_ABS) {
+    pinchClosed = false;
+  }
   return pinchClosed;
+}
+
+/** Map MediaPipe landmark (0–1) onto the object-fit:cover camera element. */
+function landmarkToFieldPx(lm) {
+  if (!camEl || !field) return null;
+  const vw = camEl.videoWidth;
+  const vh = camEl.videoHeight;
+  if (!vw || !vh) return null;
+  const rw = field.clientWidth;
+  const rh = field.clientHeight;
+  if (!rw || !rh) return null;
+  const videoAspect = vw / vh;
+  const boxAspect = rw / rh;
+  let contentW;
+  let contentH;
+  let offsetX;
+  let offsetY;
+  if (videoAspect > boxAspect) {
+    contentH = rh;
+    contentW = rh * videoAspect;
+    offsetX = (rw - contentW) / 2;
+    offsetY = 0;
+  } else {
+    contentW = rw;
+    contentH = rw / videoAspect;
+    offsetX = 0;
+    offsetY = (rh - contentH) / 2;
+  }
+  return {
+    x: offsetX + lm.x * contentW,
+    y: offsetY + lm.y * contentH,
+  };
+}
+
+function updatePinchDot(landmarks, closed) {
+  if (!pinchDot) return;
+  if (
+    !landmarks ||
+    state.watching ||
+    state.mapOpen ||
+    state.naming ||
+    state.booting
+  ) {
+    pinchDot.hidden = true;
+    return;
+  }
+  const mid = {
+    x: (landmarks[4].x + landmarks[8].x) / 2,
+    y: (landmarks[4].y + landmarks[8].y) / 2,
+  };
+  const px = landmarkToFieldPx(mid);
+  if (!px) {
+    pinchDot.hidden = true;
+    return;
+  }
+  pinchDot.hidden = false;
+  pinchDot.style.left = `${px.x}px`;
+  pinchDot.style.top = `${px.y}px`;
+  pinchDot.classList.toggle("is-closed", closed);
 }
 
 function setPinchHint(mode, text) {
@@ -1936,6 +2001,39 @@ function setPinchHint(mode, text) {
   pinchHint.textContent = text;
   pinchHint.classList.toggle("is-ready", mode === "ready");
   pinchHint.classList.toggle("is-pinching", mode === "pinching");
+}
+
+/** Landmark thumbs-up: thumb up, other fingertips curled. */
+function isThumbsUpPose(landmarks) {
+  if (!landmarks || landmarks.length < 21) return false;
+  const thumbTip = landmarks[4];
+  const thumbIp = landmarks[3];
+  const thumbMcp = landmarks[2];
+  const indexMcp = landmarks[5];
+  const wrist = landmarks[0];
+
+  const thumbLen = landmarkDist2d(thumbMcp, thumbTip);
+  if (thumbLen < 0.06) return false;
+
+  // Thumb tip is the highest fingertip (image y grows downward)
+  const otherTips = [8, 12, 16, 20].map((i) => landmarks[i]);
+  const thumbHighest = otherTips.every((t) => thumbTip.y < t.y - 0.02);
+  const thumbExtended = thumbTip.y < thumbIp.y && thumbTip.y < thumbMcp.y;
+
+  // Other fingers curled: tip below its PIP
+  const curled = [8, 12, 16, 20].every((tipIdx) => {
+    const tip = landmarks[tipIdx];
+    const pip = landmarks[tipIdx - 2];
+    return tip.y > pip.y - 0.01;
+  });
+
+  // Not a pinch — thumb should be away from the index tip
+  const notPinching = landmarkDist2d(thumbTip, landmarks[8]) > 0.12;
+
+  // Palm roughly facing camera (wrist below knuckles)
+  const palmUp = wrist.y > indexMcp.y;
+
+  return thumbHighest && thumbExtended && curled && notPinching && palmUp;
 }
 
 function pickRecorderMime() {
@@ -2036,7 +2134,7 @@ function startPinchRecording() {
   if (recordTimerId) clearInterval(recordTimerId);
   recordTimerId = setInterval(updateRecHud, 250);
   field.classList.add("is-recording");
-  setStatus("Recording… pinch again to stop", 5000);
+  setStatus("Recording… fingers together again to stop", 5000);
   return true;
 }
 
@@ -2073,7 +2171,7 @@ function stopPinchRecording() {
     updateRecHud();
 
     if (elapsed < 500 || !chunks.length) {
-      setStatus("Clip too short — pinch, wait a second, pinch again");
+      setStatus("Clip too short — touch tips, wait a second, touch again");
       return;
     }
 
@@ -2113,22 +2211,23 @@ function togglePinchRecording() {
 }
 
 function updateHandGestures(nowMs) {
-  if (!gestureRecognizer || !camEl) return;
+  if (!handLandmarker || !camEl) return;
   if (state.watching || state.mapOpen || state.booting || state.naming) {
     if (pinchHint) pinchHint.hidden = true;
+    if (pinchDot) pinchDot.hidden = true;
     return;
   }
   if (camEl.readyState < 2 || !camEl.videoWidth) return;
-  if (nowMs - lastGestureCheckAt < 66) return; // ~15 fps
-  lastGestureCheckAt = nowMs;
+  if (nowMs - lastHandCheckAt < 50) return; // ~20 fps
+  lastHandCheckAt = nowMs;
 
   let ts = nowMs;
-  if (ts <= lastGestureVideoTs) ts = lastGestureVideoTs + 1;
-  lastGestureVideoTs = ts;
+  if (ts <= lastHandVideoTs) ts = lastHandVideoTs + 1;
+  lastHandVideoTs = ts;
 
   let result;
   try {
-    result = gestureRecognizer.recognizeForVideo(camEl, ts);
+    result = handLandmarker.detectForVideo(camEl, ts);
   } catch {
     return;
   }
@@ -2136,15 +2235,16 @@ function updateHandGestures(nowMs) {
   const landmarks = result?.landmarks?.[0];
   if (!landmarks) {
     pinchCloseSince = 0;
-    if (!state.recording && gestureReady) {
-      setPinchHint("idle", "Show your hand, then pinch to record");
+    pinchClosed = false;
+    if (pinchDot) pinchDot.hidden = true;
+    if (!state.recording && handReady) {
+      setPinchHint("idle", "Show your hand — fingers together to record");
     }
     return;
   }
 
-  handSeenAt = nowMs;
-  const ratio = pinchRatio(landmarks);
-  const closed = updatePinchState(ratio);
+  const closed = updatePinchState(landmarks);
+  updatePinchDot(landmarks, closed);
 
   if (closed) {
     if (!pinchCloseSince) pinchCloseSince = nowMs;
@@ -2154,13 +2254,13 @@ function updateHandGestures(nowMs) {
   }
 
   if (!state.recording) {
-    if (closed) setPinchHint("pinching", "Pinching…");
-    else setPinchHint("ready", "Hand ready — pinch to record");
+    if (closed) setPinchHint("pinching", "Fingers together…");
+    else setPinchHint("ready", "Hand ready — touch tips to record");
   }
 
-  // Fire after a brief held pinch; must open again before the next one
-  const heldLongEnough = closed && nowMs - pinchCloseSince >= 120;
-  if (heldLongEnough && pinchArmed && nowMs - lastPinchAt > 700) {
+  // Fire after a brief held touch; must open again before the next toggle
+  const heldLongEnough = closed && nowMs - pinchCloseSince >= 80;
+  if (heldLongEnough && pinchArmed && nowMs - lastPinchAt > 550) {
     pinchArmed = false;
     lastPinchAt = nowMs;
     togglePinchRecording();
@@ -2173,10 +2273,7 @@ function updateHandGestures(nowMs) {
     return;
   }
 
-  const top = result?.gestures?.[0]?.[0];
-  const isThumb =
-    top && top.categoryName === "Thumb_Up" && top.score >= 0.6;
-
+  const isThumb = isThumbsUpPose(landmarks);
   if (!isThumb) {
     thumbGestureArmed = true;
     return;
@@ -2244,8 +2341,8 @@ function bootField(message) {
   if (camEl.srcObject) {
     camEl.play().catch(() => {});
   }
-  // Warm the thumbs-up detector in the background
-  ensureGestureRecognizer().catch(() => {});
+  // Warm the hand tracker in the background
+  ensureHandLandmarker().catch(() => {});
 
   if (state.pendingUploads.length) {
     state.nameQueue.push(...state.pendingUploads.splice(0));
@@ -2353,8 +2450,8 @@ async function enterField() {
   bootField(
     cameraOk
       ? motionOk
-        ? "Pinch to record · thumbs-up to react"
-        : "Motion blocked — drag to look · pinch to record"
+        ? "Fingers together to record · thumbs-up to react"
+        : "Motion blocked — drag to look · fingers together to record"
       : "Camera blocked — drag to explore demo videos"
   );
 
