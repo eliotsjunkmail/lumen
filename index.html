@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=41" />
+    <link rel="stylesheet" href="styles.css?v=42" />
   </head>
   <body>
     <div id="app">
@@ -164,17 +164,19 @@
               </div>
               <p class="theater-caption" id="theater-title">Untitled</p>
             </div>
-            <button type="button" id="theater-done" class="theater-done">
-              Close
-            </button>
-            <button
-              type="button"
-              id="theater-delete"
-              class="theater-delete-link"
-              hidden
-            >
-              delete
-            </button>
+            <div class="theater-actions">
+              <button type="button" id="theater-done" class="theater-done">
+                Close
+              </button>
+              <button
+                type="button"
+                id="theater-delete"
+                class="theater-delete"
+                hidden
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
 
@@ -259,6 +261,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=41"></script>
+    <script type="module" src="app.js?v=42"></script>
   </body>
 </html>

@@ -884,9 +884,16 @@ button {
   pointer-events: none;
 }
 
+.theater-actions {
+  display: grid;
+  gap: 10px;
+  justify-items: stretch;
+  width: min(100%, 220px);
+}
+
 .theater-done {
   min-height: 2.6rem;
-  min-width: 7.5rem;
+  width: 100%;
   padding: 0 1.4rem;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -900,20 +907,25 @@ button {
   background: rgba(238, 247, 240, 0.14);
 }
 
-.theater-delete-link {
-  margin: 0;
-  padding: 0.15rem 0.4rem;
-  border: 0;
+.theater-delete {
+  min-height: 2.35rem;
+  width: 100%;
+  padding: 0 1.2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 90, 80, 0.35);
   background: transparent;
-  color: rgba(238, 247, 240, 0.55);
-  font-size: 0.82rem;
-  font-weight: 500;
-  text-decoration: underline;
-  text-underline-offset: 0.18em;
+  color: #ffb4ad;
+  font-weight: 600;
+  font-size: 0.92rem;
 }
 
-.theater-delete-link:active {
-  color: #ffb4ad;
+.theater-delete:active {
+  transform: scale(0.97);
+  background: rgba(255, 90, 80, 0.12);
+}
+
+.theater-delete[hidden] {
+  display: none !important;
 }
 
 .confirm-modal {

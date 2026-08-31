@@ -2394,21 +2394,23 @@ async function syncSharedSpots() {
       position = [enu.x, 1.4, enu.z];
     }
 
+    const isOwner = Boolean(row.owner) && row.owner === getDeviceId();
     const node = createNode(
       {
         id: nodeId,
         title: row.title || "Shared clip",
-        blurb: "Shared pin",
+        blurb: isOwner ? "Your pin" : "Shared pin",
         src: videoUrl(row.video_path),
         position,
-        // Unsigned uploads can only be deleted shortly after publishing,
-        // so previously shared pins load as view-only
-        deletable: false,
+        // Own pins can be removed locally; cloud wipe needs a delete token
+        // (available briefly after upload). Others stay view-only.
+        deletable: isOwner,
         lat: row.lat,
         lng: row.lng,
         inRange: false,
         cloudId: row.id,
         storagePath: row.video_path,
+        owner: row.owner || "",
       },
       state.nodes.length
     );
