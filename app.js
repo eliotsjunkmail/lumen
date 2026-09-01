@@ -58,10 +58,6 @@ const theaterDelete = document.getElementById("theater-delete");
 const theaterClose = document.getElementById("theater-close");
 const theaterDone = document.getElementById("theater-done");
 const reactBurst = document.getElementById("react-burst");
-const recHud = document.getElementById("rec-hud");
-const recTime = document.getElementById("rec-time");
-const pinchHint = document.getElementById("pinch-hint");
-const pinchDot = document.getElementById("pinch-dot");
 const confirmModal = document.getElementById("confirm-modal");
 const confirmCopy = document.getElementById("confirm-copy");
 const confirmCancel = document.getElementById("confirm-cancel");
@@ -118,11 +114,6 @@ const state = {
   hasGyro: false,
   orientReady: false,
   northAligned: false,
-  recording: false,
-  recorder: null,
-  recordChunks: [],
-  recordStartedAt: 0,
-  recordMime: "",
 };
 
 let renderer;
@@ -1452,7 +1443,6 @@ function updateMapView() {
 
 async function openMapModal() {
   if (!mapModal || state.watching) return;
-  if (state.recording) cancelPinchRecording();
   state.mapOpen = true;
   mapModal.hidden = false;
   refreshMapList();
@@ -1608,7 +1598,6 @@ function setFocus(node) {
 
 function openTheater(node, opts = {}) {
   if (!node) return;
-  if (state.recording) cancelPinchRecording();
   const fromMap = Boolean(opts.fromMap) || state.mapOpen;
   closeMapModal();
   closeConfirmModal();
@@ -1685,10 +1674,8 @@ async function startCamera() {
   camEl.autoplay = true;
   camEl.playsInline = true;
 
-  // Prefer mic+camera so pinch-to-record can capture audio; fall back to video-only
+  // Rear camera only — uploads come from Add / camera roll
   const attempts = [
-    { audio: true, video: { facingMode: "environment" } },
-    { audio: true, video: { facingMode: { ideal: "environment" } } },
     { audio: false, video: { facingMode: "environment" } },
     { audio: false, video: { facingMode: { ideal: "environment" } } },
     { audio: false, video: true },
@@ -1823,19 +1810,13 @@ function onResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// —— Hand gestures: fingers-together toggles record, thumbs-up reacts ——
+// —— Hand gestures: thumbs-up reacts on the focused video ——
 let handLandmarker = null;
 let handLoadPromise = null;
-let handReady = false;
 let lastHandVideoTs = -1;
 let lastHandCheckAt = 0;
 let lastThumbUpAt = 0;
 let thumbGestureArmed = true;
-let pinchClosed = false;
-let pinchArmed = true;
-let pinchCloseSince = 0;
-let lastPinchAt = 0;
-let recordTimerId = null;
 
 async function ensureHandLandmarker() {
   if (handLandmarker) return handLandmarker;
@@ -1854,9 +1835,9 @@ async function ensureHandLandmarker() {
       },
       runningMode: "VIDEO",
       numHands: 1,
-      minHandDetectionConfidence: 0.35,
-      minHandPresenceConfidence: 0.35,
-      minTrackingConfidence: 0.35,
+      minHandDetectionConfidence: 0.4,
+      minHandPresenceConfidence: 0.4,
+      minTrackingConfidence: 0.4,
     };
 
     // GPU fails on many iPhones — fall back to CPU
@@ -1868,17 +1849,10 @@ async function ensureHandLandmarker() {
       options.baseOptions.delegate = "CPU";
       handLandmarker = await mod.HandLandmarker.createFromOptions(vision, options);
     }
-    handReady = true;
-    if (!state.watching && !state.mapOpen) {
-      setStatus("Hand ready — put fingers together to record", 3200);
-      if (pinchHint) pinchHint.hidden = false;
-    }
     return handLandmarker;
   })().catch((err) => {
     console.warn("Hand landmarker unavailable", err);
     handLoadPromise = null;
-    handReady = false;
-    setStatus("Hand gestures unavailable in this browser", 4200);
     return null;
   });
   return handLoadPromise;
@@ -1886,121 +1860,6 @@ async function ensureHandLandmarker() {
 
 function landmarkDist2d(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-/**
- * How closed thumb tip ↔ index tip are (0 ≈ together).
- * Scaled by palm size so it works at any distance from the camera.
- */
-function pinchRatio(landmarks) {
-  if (!landmarks || landmarks.length < 18) return 1;
-  const thumbTip = landmarks[4];
-  const indexTip = landmarks[8];
-  const wrist = landmarks[0];
-  const indexMcp = landmarks[5];
-  const pinkyMcp = landmarks[17];
-  const scale = Math.max(
-    landmarkDist2d(wrist, indexMcp),
-    landmarkDist2d(wrist, pinkyMcp),
-    landmarkDist2d(indexMcp, pinkyMcp),
-    0.05
-  );
-  return landmarkDist2d(thumbTip, indexTip) / scale;
-}
-
-/**
- * “Fingers together” — generous thresholds so a simple tip touch toggles.
- * Absolute tip distance also counts (hand far from camera still works).
- */
-function updatePinchState(landmarks) {
-  if (!landmarks || landmarks.length < 9) {
-    pinchClosed = false;
-    return false;
-  }
-  const tipDist = landmarkDist2d(landmarks[4], landmarks[8]);
-  const ratio = pinchRatio(landmarks);
-  const CLOSE_RATIO = 0.55;
-  const OPEN_RATIO = 0.78;
-  const CLOSE_ABS = 0.085;
-  const OPEN_ABS = 0.14;
-
-  if (!pinchClosed) {
-    if (ratio <= CLOSE_RATIO || tipDist <= CLOSE_ABS) pinchClosed = true;
-  } else if (ratio >= OPEN_RATIO && tipDist >= OPEN_ABS) {
-    pinchClosed = false;
-  }
-  return pinchClosed;
-}
-
-/** Map MediaPipe landmark (0–1) onto the object-fit:cover camera element. */
-function landmarkToFieldPx(lm) {
-  if (!camEl || !field) return null;
-  const vw = camEl.videoWidth;
-  const vh = camEl.videoHeight;
-  if (!vw || !vh) return null;
-  const rw = field.clientWidth;
-  const rh = field.clientHeight;
-  if (!rw || !rh) return null;
-  const videoAspect = vw / vh;
-  const boxAspect = rw / rh;
-  let contentW;
-  let contentH;
-  let offsetX;
-  let offsetY;
-  if (videoAspect > boxAspect) {
-    contentH = rh;
-    contentW = rh * videoAspect;
-    offsetX = (rw - contentW) / 2;
-    offsetY = 0;
-  } else {
-    contentW = rw;
-    contentH = rw / videoAspect;
-    offsetX = 0;
-    offsetY = (rh - contentH) / 2;
-  }
-  return {
-    x: offsetX + lm.x * contentW,
-    y: offsetY + lm.y * contentH,
-  };
-}
-
-function updatePinchDot(landmarks, closed) {
-  if (!pinchDot) return;
-  if (
-    !landmarks ||
-    state.watching ||
-    state.mapOpen ||
-    state.naming ||
-    state.booting
-  ) {
-    pinchDot.hidden = true;
-    return;
-  }
-  const mid = {
-    x: (landmarks[4].x + landmarks[8].x) / 2,
-    y: (landmarks[4].y + landmarks[8].y) / 2,
-  };
-  const px = landmarkToFieldPx(mid);
-  if (!px) {
-    pinchDot.hidden = true;
-    return;
-  }
-  pinchDot.hidden = false;
-  pinchDot.style.left = `${px.x}px`;
-  pinchDot.style.top = `${px.y}px`;
-  pinchDot.classList.toggle("is-closed", closed);
-}
-
-function setPinchHint(mode, text) {
-  if (!pinchHint) return;
-  if (state.recording || state.watching || state.mapOpen || state.naming) {
-    pinchHint.hidden = true;
-    return;
-  }
-  pinchHint.hidden = false;
-  pinchHint.textContent = text;
-  pinchHint.classList.toggle("is-ready", mode === "ready");
-  pinchHint.classList.toggle("is-pinching", mode === "pinching");
 }
 
 /** Landmark thumbs-up: thumb up, other fingertips curled. */
@@ -2027,7 +1886,7 @@ function isThumbsUpPose(landmarks) {
     return tip.y > pip.y - 0.01;
   });
 
-  // Not a pinch — thumb should be away from the index tip
+  // Thumb away from the index tip
   const notPinching = landmarkDist2d(thumbTip, landmarks[8]) > 0.12;
 
   // Palm roughly facing camera (wrist below knuckles)
@@ -2036,189 +1895,11 @@ function isThumbsUpPose(landmarks) {
   return thumbHighest && thumbExtended && curled && notPinching && palmUp;
 }
 
-function pickRecorderMime() {
-  const types = [
-    "video/mp4",
-    "video/webm;codecs=vp9,opus",
-    "video/webm;codecs=vp8,opus",
-    "video/webm",
-  ];
-  return types.find((t) => window.MediaRecorder?.isTypeSupported?.(t)) || "";
-}
-
-function formatRecTime(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${String(r).padStart(2, "0")}`;
-}
-
-function updateRecHud() {
-  if (!recHud) return;
-  if (!state.recording) {
-    recHud.hidden = true;
-    if (recordTimerId) {
-      clearInterval(recordTimerId);
-      recordTimerId = null;
-    }
-    return;
-  }
-  recHud.hidden = false;
-  if (recTime) {
-    recTime.textContent = formatRecTime(performance.now() - state.recordStartedAt);
-  }
-}
-
-function startPinchRecording() {
-  if (state.recording || state.watching || state.mapOpen || state.naming) return false;
-  const stream = camEl?.srcObject;
-  if (!(stream instanceof MediaStream)) {
-    setStatus("Camera isn’t ready to record yet");
-    return false;
-  }
-  if (typeof MediaRecorder === "undefined") {
-    setStatus("Recording isn’t supported in this browser — use Add");
-    return false;
-  }
-
-  // Ensure tracks are live
-  const liveTracks = stream.getTracks().filter((t) => t.readyState === "live");
-  if (!liveTracks.length) {
-    setStatus("Camera stream ended — reopen the lens");
-    return false;
-  }
-
-  const mime = pickRecorderMime();
-  let recorder;
-  try {
-    const opts = mime ? { mimeType: mime } : undefined;
-    recorder = opts ? new MediaRecorder(stream, opts) : new MediaRecorder(stream);
-  } catch (err) {
-    console.warn(err);
-    try {
-      recorder = new MediaRecorder(stream);
-    } catch (err2) {
-      console.warn(err2);
-      setStatus("Couldn’t start recording — try Add instead");
-      return false;
-    }
-  }
-
-  state.recordChunks = [];
-  state.recordMime = recorder.mimeType || mime || "video/webm";
-  state.recorder = recorder;
-  state.recording = true;
-  state.recordStartedAt = performance.now();
-
-  recorder.ondataavailable = (e) => {
-    if (e.data && e.data.size > 0) state.recordChunks.push(e.data);
-  };
-  recorder.onerror = (e) => {
-    console.warn("MediaRecorder error", e);
-    setStatus("Recording failed");
-    cancelPinchRecording();
-  };
-
-  try {
-    // timeslice breaks some iOS builds — collect on stop instead
-    recorder.start();
-  } catch (err) {
-    console.warn(err);
-    cancelPinchRecording();
-    setStatus("Couldn’t start recording");
-    return false;
-  }
-
-  if (pinchHint) pinchHint.hidden = true;
-  updateRecHud();
-  if (recordTimerId) clearInterval(recordTimerId);
-  recordTimerId = setInterval(updateRecHud, 250);
-  field.classList.add("is-recording");
-  setStatus("Recording… fingers together again to stop", 5000);
-  return true;
-}
-
-function cancelPinchRecording() {
-  const recorder = state.recorder;
-  state.recording = false;
-  state.recorder = null;
-  state.recordChunks = [];
-  field.classList.remove("is-recording");
-  updateRecHud();
-  if (recorder && recorder.state !== "inactive") {
-    try {
-      recorder.onstop = null;
-      recorder.stop();
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-function stopPinchRecording() {
-  if (!state.recording || !state.recorder) return;
-  const recorder = state.recorder;
-  const startedAt = state.recordStartedAt;
-  const mime = state.recordMime || "video/webm";
-
-  const finish = () => {
-    const elapsed = performance.now() - startedAt;
-    const chunks = state.recordChunks.slice();
-    state.recording = false;
-    state.recorder = null;
-    state.recordChunks = [];
-    field.classList.remove("is-recording");
-    updateRecHud();
-
-    if (elapsed < 500 || !chunks.length) {
-      setStatus("Clip too short — touch tips, wait a second, touch again");
-      return;
-    }
-
-    const ext = mime.includes("mp4") ? "mp4" : "webm";
-    const blob = new Blob(chunks, { type: mime || `video/${ext}` });
-    if (blob.size < 1000) {
-      setStatus("Recording produced an empty clip — try again");
-      return;
-    }
-    const file = new File([blob], `lumen-${Date.now()}.${ext}`, {
-      type: blob.type,
-      lastModified: Date.now(),
-    });
-    setStatus("Clip captured — name it to pin");
-    addUploadedFiles([file]);
-  };
-
-  recorder.onstop = finish;
-  try {
-    if (recorder.state === "recording") {
-      try {
-        recorder.requestData();
-      } catch {
-        /* some browsers throw if no timeslice was used */
-      }
-    }
-    recorder.stop();
-  } catch (err) {
-    console.warn(err);
-    finish();
-  }
-}
-
-function togglePinchRecording() {
-  if (state.recording) stopPinchRecording();
-  else startPinchRecording();
-}
-
 function updateHandGestures(nowMs) {
   if (!handLandmarker || !camEl) return;
-  if (state.watching || state.mapOpen || state.booting || state.naming) {
-    if (pinchHint) pinchHint.hidden = true;
-    if (pinchDot) pinchDot.hidden = true;
-    return;
-  }
+  if (state.watching || state.mapOpen || state.booting || state.naming) return;
   if (camEl.readyState < 2 || !camEl.videoWidth) return;
-  if (nowMs - lastHandCheckAt < 50) return; // ~20 fps
+  if (nowMs - lastHandCheckAt < 66) return; // ~15 fps
   lastHandCheckAt = nowMs;
 
   let ts = nowMs;
@@ -2234,40 +1915,10 @@ function updateHandGestures(nowMs) {
 
   const landmarks = result?.landmarks?.[0];
   if (!landmarks) {
-    pinchCloseSince = 0;
-    pinchClosed = false;
-    if (pinchDot) pinchDot.hidden = true;
-    if (!state.recording && handReady) {
-      setPinchHint("idle", "Show your hand — fingers together to record");
-    }
+    thumbGestureArmed = true;
     return;
   }
 
-  const closed = updatePinchState(landmarks);
-  updatePinchDot(landmarks, closed);
-
-  if (closed) {
-    if (!pinchCloseSince) pinchCloseSince = nowMs;
-  } else {
-    pinchCloseSince = 0;
-    pinchArmed = true;
-  }
-
-  if (!state.recording) {
-    if (closed) setPinchHint("pinching", "Fingers together…");
-    else setPinchHint("ready", "Hand ready — touch tips to record");
-  }
-
-  // Fire after a brief held touch; must open again before the next toggle
-  const heldLongEnough = closed && nowMs - pinchCloseSince >= 80;
-  if (heldLongEnough && pinchArmed && nowMs - lastPinchAt > 550) {
-    pinchArmed = false;
-    lastPinchAt = nowMs;
-    togglePinchRecording();
-  }
-
-  // Thumbs-up reacts on the focused video (skip while recording / pinching)
-  if (state.recording || closed) return;
   if (!state.focused || !state.focused.group?.visible) {
     thumbGestureArmed = true;
     return;
@@ -2301,7 +1952,7 @@ function animate() {
   // Keep geo pins synced if watch hasn't fired yet
   if (state.userGeo) updateGeoAnchors();
 
-  if (!state.watching && !state.recording) {
+  if (!state.watching) {
     const node = pickCenter();
     if (node !== state.focused) setFocus(node);
   }
@@ -2452,8 +2103,8 @@ async function enterField() {
   bootField(
     cameraOk
       ? motionOk
-        ? "Fingers together to record · thumbs-up to react"
-        : "Motion blocked — drag to look · fingers together to record"
+        ? "Thumbs-up to react · Add to pin a clip"
+        : "Motion blocked — drag to look · Add to pin a clip"
       : "Camera blocked — drag to explore demo videos"
   );
 
@@ -2832,11 +2483,6 @@ videoInputField?.addEventListener("change", onPickVideos);
 // Desktop keyboard nudge
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    if (state.recording) {
-      cancelPinchRecording();
-      setStatus("Recording canceled");
-      return;
-    }
     if (confirmModal && !confirmModal.hidden) {
       closeConfirmModal();
       return;
@@ -2850,7 +2496,7 @@ window.addEventListener("keydown", (e) => {
       return;
     }
   }
-  if (state.watching || state.recording) return;
+  if (state.watching) return;
   const step = 0.08;
   if (e.key === "ArrowLeft") state.offsetYaw += step;
   if (e.key === "ArrowRight") state.offsetYaw -= step;

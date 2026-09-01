@@ -587,118 +587,6 @@ button {
   animation: react-pop 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.rec-hud {
-  position: absolute;
-  top: calc(64px + var(--safe-top));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.4rem 0.75rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 90, 80, 0.45);
-  background: rgba(6, 16, 12, 0.78);
-  color: var(--foam);
-  font-weight: 700;
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  pointer-events: none;
-  animation: fade-down 0.25s ease both;
-}
-
-.rec-hud[hidden] {
-  display: none !important;
-}
-
-.rec-dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: #ff5a50;
-  box-shadow: 0 0 10px rgba(255, 90, 80, 0.85);
-  animation: rec-blink 1s ease-in-out infinite;
-}
-
-.rec-time {
-  font-variant-numeric: tabular-nums;
-  color: rgba(238, 247, 240, 0.85);
-  font-weight: 600;
-}
-
-.pinch-hint {
-  position: absolute;
-  left: 50%;
-  bottom: calc(96px + var(--safe-bottom));
-  transform: translateX(-50%);
-  z-index: 4;
-  padding: 0.45rem 0.85rem;
-  border-radius: 999px;
-  border: 1px solid rgba(198, 255, 74, 0.28);
-  background: rgba(6, 16, 12, 0.72);
-  color: rgba(238, 247, 240, 0.88);
-  font-size: 0.78rem;
-  font-weight: 600;
-  white-space: nowrap;
-  pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.pinch-hint.is-ready {
-  border-color: rgba(198, 255, 74, 0.55);
-  color: var(--signal);
-}
-
-.pinch-hint.is-pinching {
-  border-color: rgba(255, 90, 80, 0.55);
-  color: #ffb4ad;
-  transform: translateX(-50%) scale(1.04);
-}
-
-.pinch-hint[hidden] {
-  display: none !important;
-}
-
-.pinch-dot {
-  position: absolute;
-  z-index: 4;
-  width: 28px;
-  height: 28px;
-  margin: -14px 0 0 -14px;
-  border-radius: 50%;
-  border: 2px solid var(--signal);
-  background: rgba(198, 255, 74, 0.25);
-  box-shadow: 0 0 12px rgba(198, 255, 74, 0.65);
-  pointer-events: none;
-  transform: scale(0.85);
-  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
-}
-
-.pinch-dot.is-closed {
-  background: rgba(255, 90, 80, 0.4);
-  border-color: #ff5a50;
-  box-shadow: 0 0 14px rgba(255, 90, 80, 0.75);
-  transform: scale(1.15);
-}
-
-.pinch-dot[hidden] {
-  display: none !important;
-}
-
-@keyframes rec-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-
-.field.is-watching .rec-hud,
-.field.is-watching .pinch-hint,
-.field.is-watching .pinch-dot,
 .field.is-watching .react-burst {
   opacity: 0;
   pointer-events: none;
@@ -721,11 +609,6 @@ button {
     opacity: 0;
     transform: translate(-50%, -78%) scale(0.85);
   }
-}
-
-.field.is-watching .react-burst {
-  opacity: 0;
-  pointer-events: none;
 }
 
 .delete-btn {
