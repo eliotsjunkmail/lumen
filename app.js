@@ -58,12 +58,9 @@ const videoInputField = document.getElementById("video-input-field");
 const addBtn = document.getElementById("add-btn");
 const addModal = document.getElementById("add-modal");
 const addUpload = document.getElementById("add-upload");
-const addCreate = document.getElementById("add-create");
 const addCancel = document.getElementById("add-cancel");
-const createModal = document.getElementById("create-modal");
 const createForm = document.getElementById("create-form");
 const createInput = document.getElementById("create-input");
-const createCancel = document.getElementById("create-cancel");
 const createSubmit = document.getElementById("create-submit");
 const createStatus = document.getElementById("create-status");
 const deleteBtn = document.getElementById("delete-btn");
@@ -127,6 +124,7 @@ const state = {
   hasGyro: false,
   orientReady: false,
   northAligned: false,
+  theaterAnimId: null,
 };
 
 let renderer;
@@ -653,12 +651,22 @@ function createNode(item, index) {
   let video = null;
   let texture;
   let pendingImage = null;
+  let animCanvas = null;
+  let animCtx = null;
+  const animFrames = Array.isArray(item.animFrames) ? item.animFrames.slice() : [];
+
   if (kind === "image") {
-    texture = new THREE.Texture();
+    animCanvas = document.createElement("canvas");
+    animCanvas.width = 768;
+    animCanvas.height = 768;
+    animCtx = animCanvas.getContext("2d");
+    texture = new THREE.CanvasTexture(animCanvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-    texture.needsUpdate = false;
-    pendingImage = new Image();
-    if (!String(item.src).startsWith("blob:")) pendingImage.crossOrigin = "anonymous";
+    texture.needsUpdate = true;
+    if (item.src && !animFrames.length) {
+      pendingImage = new Image();
+      if (!String(item.src).startsWith("blob:")) pendingImage.crossOrigin = "anonymous";
+    }
   } else {
     video = makeVideoElement(item.src);
     texture = new THREE.VideoTexture(video);
@@ -746,6 +754,11 @@ function createNode(item, index) {
     baseY: item.position[1],
     phase: index * 1.1,
     previewing: false,
+    animFrames,
+    animCanvas,
+    animCtx,
+    animIndex: -1,
+    animUrls: Array.isArray(item.animUrls) ? item.animUrls.slice() : [],
   };
   if (node.lat != null) {
     node.group.visible = node.inRange;
@@ -758,17 +771,33 @@ function createNode(item, index) {
     else video.addEventListener("loadedmetadata", onMeta, { once: true });
   }
 
+  const paintFrame = (img) => {
+    if (!node.animCanvas || !node.animCtx || !img) return;
+    const w = img.naturalWidth || img.width || 768;
+    const h = img.naturalHeight || img.height || 768;
+    if (node.animCanvas.width !== w || node.animCanvas.height !== h) {
+      node.animCanvas.width = w;
+      node.animCanvas.height = h;
+    }
+    node.animCtx.clearRect(0, 0, node.animCanvas.width, node.animCanvas.height);
+    node.animCtx.drawImage(img, 0, 0);
+    node.texture.needsUpdate = true;
+    applyMediaAspect(node, w, h);
+  };
+
   if (pendingImage) {
     pendingImage.onload = () => {
-      texture.image = pendingImage;
-      texture.needsUpdate = true;
-      applyMediaAspect(node, pendingImage.naturalWidth, pendingImage.naturalHeight);
+      node.animFrames = [pendingImage];
+      paintFrame(pendingImage);
     };
     pendingImage.onerror = () => {
       console.warn("Creation image failed to decode");
       setStatus("Creation image failed to load", 3200);
     };
     pendingImage.src = item.src;
+  } else if (animFrames.length) {
+    paintFrame(animFrames[0]);
+    node.animIndex = 0;
   }
 
   if (node.thumbs > 0) refreshNodeChrome(node);
@@ -789,8 +818,17 @@ function disposeNode(node) {
     node.video.removeAttribute("src");
     node.video.load();
   }
-  if (node.objectUrl) URL.revokeObjectURL(node.objectUrl);
-  node.texture?.dispose();
+    if (node.objectUrl) URL.revokeObjectURL(node.objectUrl);
+  if (Array.isArray(node.animUrls)) {
+    for (const u of node.animUrls) {
+      try {
+        URL.revokeObjectURL(u);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+node.texture?.dispose();
   node.screen.geometry.dispose();
   node.frame.geometry.dispose();
   node.label.geometry.dispose();
@@ -972,8 +1010,28 @@ function updateNodes(t) {
     const hot = state.focused === node;
     if (node.kind === "image") {
       node.frame.visible = false;
+      // Flipbook + idle sway so creations feel alive
+      if (node.animFrames?.length > 1 && node.animCtx) {
+        const fps = 7;
+        const idx = Math.floor(t * fps) % node.animFrames.length;
+        if (idx !== node.animIndex) {
+          node.animIndex = idx;
+          const img = node.animFrames[idx];
+          if (img) {
+            node.animCtx.clearRect(0, 0, node.animCanvas.width, node.animCanvas.height);
+            node.animCtx.drawImage(img, 0, 0);
+            node.texture.needsUpdate = true;
+          }
+        }
+      }
+      const sway = Math.sin(t * 2.4 + node.phase) * 0.05;
+      const breathe = 1 + Math.sin(t * 3.1 + node.phase) * 0.035;
+      node.screen.rotation.z = sway;
+      node.screen.scale.setScalar(breathe);
     } else {
       node.frame.material.opacity = hot ? 0.55 : 0.16;
+      node.screen.rotation.z = 0;
+      node.screen.scale.set(1, 1, 1);
     }
     node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
 
@@ -1693,10 +1751,29 @@ function openTheater(node, opts = {}) {
     theaterVideo.pause();
     theaterVideo.removeAttribute("src");
     theaterVideo.load();
-    theaterImage.src = node.src;
+    stopTheaterImageAnim();
     theaterImage.alt = node.title || "Creation";
+    const frames = node.animFrames?.length
+      ? node.animFrames
+      : null;
+    if (frames?.length) {
+      let i = 0;
+      const paint = () => {
+        const img = frames[i % frames.length];
+        if (img?.src) theaterImage.src = img.src;
+        else if (node.animUrls?.[i % frames.length]) {
+          theaterImage.src = node.animUrls[i % frames.length];
+        }
+        i += 1;
+      };
+      paint();
+      state.theaterAnimId = setInterval(paint, 140);
+    } else {
+      theaterImage.src = node.src;
+    }
     setStatus(`Viewing ${node.title}`);
   } else {
+    stopTheaterImageAnim();
     if (theaterImage) {
       theaterImage.removeAttribute("src");
       theaterImage.alt = "";
@@ -1723,6 +1800,7 @@ function openTheater(node, opts = {}) {
 function closeTheaterMode() {
   const returnToMap = state.theaterFromMap;
   closeConfirmModal();
+  stopTheaterImageAnim();
   state.watching = false;
   state.watchingNode = null;
   state.theaterFromMap = false;
@@ -1761,6 +1839,13 @@ function requestTheaterDelete() {
   const node = state.watchingNode || state.focused;
   if (!node?.deletable) return;
   openConfirmModal(`Delete “${node.title}”? This can’t be undone.`);
+}
+
+function stopTheaterImageAnim() {
+  if (state.theaterAnimId) {
+    clearInterval(state.theaterAnimId);
+    state.theaterAnimId = null;
+  }
 }
 
 async function startCamera() {
@@ -2539,9 +2624,12 @@ function titleFromCreatePrompt(prompt) {
   return t.charAt(0).toUpperCase() + t.slice(1).slice(0, 47);
 }
 
-function buildCreateImageUrl(subject) {
+function buildCreateImageUrl(subject, { seed, frame, frames }) {
   const prompt = [
     subject,
+    `seamless animation frame ${frame} of ${frames}`,
+    "subtle natural motion pose",
+    "same character, same colors, same style",
     "full body",
     "centered",
     "isolated object cutout",
@@ -2551,10 +2639,9 @@ function buildCreateImageUrl(subject) {
     "no text",
     "studio product photo",
   ].join(", ");
-  const seed = Math.floor(Math.random() * 1e9);
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(
     prompt
-  )}?width=768&height=768&nologo=true&seed=${seed}`;
+  )}?width=640&height=640&nologo=true&seed=${seed}`;
 }
 
 function loadHtmlImage(src) {
@@ -2597,9 +2684,7 @@ async function cutoutTransparentPng(sourceUrl) {
     .reduce((acc, c) => [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]], [0, 0, 0])
     .map((v) => v / corners.length);
 
-  const dist = (r, g, b) =>
-    Math.hypot(r - bg[0], g - bg[1], b - bg[2]);
-  // Also treat very light pixels as background even if tinted
+  const dist = (r, g, b) => Math.hypot(r - bg[0], g - bg[1], b - bg[2]);
   const isBg = (r, g, b) => {
     const luma = 0.299 * r + 0.587 * g + 0.114 * b;
     return dist(r, g, b) < 48 || (luma > 235 && dist(r, g, b) < 90);
@@ -2613,7 +2698,6 @@ async function cutoutTransparentPng(sourceUrl) {
       d[i + 3] = 0;
       continue;
     }
-    // Soft edge near background color
     const dd = dist(r, g, b);
     if (dd < 78) {
       d[i + 3] = Math.max(0, Math.min(255, Math.round(((dd - 48) / 30) * 255)));
@@ -2630,24 +2714,52 @@ async function cutoutTransparentPng(sourceUrl) {
   return blob;
 }
 
-async function generateCreationBlob(prompt) {
-  const subject = titleFromCreatePrompt(prompt);
-  const url = buildCreateImageUrl(subject);
+async function fetchCutoutFrame(subject, seed, frame, frames) {
+  const url = buildCreateImageUrl(subject, { seed, frame, frames });
   const res = await fetch(url, { mode: "cors" });
   if (!res.ok) throw new Error(`Create failed (${res.status})`);
   const raw = await res.blob();
   const rawUrl = URL.createObjectURL(raw);
   try {
     const cut = await cutoutTransparentPng(rawUrl);
-    return { blob: cut, title: subject };
+    const cutUrl = URL.createObjectURL(cut);
+    const img = await loadHtmlImage(cutUrl);
+    return { img, url: cutUrl, blob: cut };
   } finally {
     URL.revokeObjectURL(rawUrl);
   }
 }
 
-async function placeNamedCreation(blob, name) {
+/** Build a short looping flipbook of transparent cutouts. */
+async function generateCreationAnim(prompt, onProgress) {
+  const subject = titleFromCreatePrompt(prompt);
+  const frames = 4;
+  const seed = Math.floor(Math.random() * 1e9);
+  onProgress?.(0, frames);
+
+  let done = 0;
+  const results = await Promise.all(
+    Array.from({ length: frames }, (_, i) =>
+      fetchCutoutFrame(subject, seed, i + 1, frames).then((r) => {
+        done += 1;
+        onProgress?.(done, frames);
+        return r;
+      })
+    )
+  );
+
+  return {
+    title: subject,
+    animFrames: results.map((r) => r.img),
+    animUrls: results.map((r) => r.url),
+    src: results[0].url,
+    thumbBlob: results[0].blob,
+  };
+}
+
+async function placeNamedCreation(creation) {
   state.uploadCount += 1;
-  const url = URL.createObjectURL(blob);
+  const { title: name, animFrames, animUrls, src } = creation;
 
   let geo = state.userGeo || state.originGeo;
   if (!geo) {
@@ -2659,7 +2771,6 @@ async function placeNamedCreation(blob, name) {
     } catch (err) {
       console.warn(err);
       setStatus("Location permission needed to geo-pin creations", 4200);
-      URL.revokeObjectURL(url);
       throw err;
     }
   }
@@ -2674,9 +2785,10 @@ async function placeNamedCreation(blob, name) {
       kind: "image",
       title: name,
       blurb: "Within 25 ft · aim from any side",
-      src: url,
+      src,
+      animFrames,
+      animUrls,
       position,
-      objectUrl: url,
       deletable: true,
       lat: pinGeo.lat,
       lng: pinGeo.lng,
@@ -2691,7 +2803,7 @@ async function placeNamedCreation(blob, name) {
     refreshMapList();
     syncLeafletMarkers();
   }
-  node.thumbUrl = url;
+  node.thumbUrl = src;
   setFocus(node);
   setStatus(`“${name}” created where you’re aiming`);
   return node;
@@ -2699,31 +2811,6 @@ async function placeNamedCreation(blob, name) {
 
 function closeAddModal() {
   if (addModal) addModal.hidden = true;
-}
-
-function openAddModal() {
-  if (!addModal) return;
-  if (state.watching || state.naming) return;
-  closeCreateModal();
-  addModal.hidden = false;
-}
-
-function closeCreateModal() {
-  if (!createModal) return;
-  createModal.hidden = true;
-  if (createStatus) {
-    createStatus.hidden = true;
-    createStatus.textContent = "";
-  }
-  if (createSubmit) createSubmit.disabled = false;
-  if (createInput) createInput.disabled = false;
-}
-
-function openCreateModal() {
-  if (!createModal || !createInput) return;
-  closeAddModal();
-  createModal.hidden = false;
-  createInput.value = "";
   if (createStatus) {
     createStatus.hidden = true;
     createStatus.textContent = "";
@@ -2732,8 +2819,24 @@ function openCreateModal() {
     createSubmit.disabled = false;
     createSubmit.textContent = "Create here";
   }
-  createInput.disabled = false;
-  createInput.focus();
+  if (createInput) createInput.disabled = false;
+}
+
+function openAddModal() {
+  if (!addModal) return;
+  if (state.watching || state.naming) return;
+  if (createInput) createInput.value = "";
+  if (createStatus) {
+    createStatus.hidden = true;
+    createStatus.textContent = "";
+  }
+  if (createSubmit) {
+    createSubmit.disabled = false;
+    createSubmit.textContent = "Create here";
+  }
+  if (createInput) createInput.disabled = false;
+  addModal.hidden = false;
+  createInput?.focus();
 }
 
 async function processNameQueue() {
@@ -2797,19 +2900,16 @@ addModal?.addEventListener("click", (e) => {
 });
 addUpload?.addEventListener("click", () => {
   closeAddModal();
+  // Native sheet: Take Video / Photo Library / Files / Drive, etc.
   videoInputField?.click();
-});
-addCreate?.addEventListener("click", () => {
-  openCreateModal();
-});
-createCancel?.addEventListener("click", closeCreateModal);
-createModal?.addEventListener("click", (e) => {
-  if (e.target === createModal) closeCreateModal();
 });
 createForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const prompt = createInput?.value?.trim();
-  if (!prompt) return;
+  if (!prompt) {
+    createInput?.focus();
+    return;
+  }
   if (!state.booted || !scene) {
     setStatus("Open the lens first, then create");
     return;
@@ -2819,16 +2919,22 @@ createForm?.addEventListener("submit", async (e) => {
     createSubmit.textContent = "Creating…";
   }
   if (createInput) createInput.disabled = true;
+  if (addUpload) addUpload.disabled = true;
   if (createStatus) {
     createStatus.hidden = false;
-    createStatus.textContent = "Generating cutout…";
+    createStatus.textContent = "Generating animation…";
   }
-  setStatus("Creating…", 12000);
+  setStatus("Creating animated cutout…", 20000);
   try {
-    const { blob, title } = await generateCreationBlob(prompt);
+    const creation = await generateCreationAnim(prompt, (i, n) => {
+      if (createStatus) {
+        createStatus.textContent = `Animating frame ${i} of ${n}…`;
+      }
+      setStatus(`Animating frame ${i} of ${n}…`, 20000);
+    });
     if (createStatus) createStatus.textContent = "Pinning…";
-    await placeNamedCreation(blob, title);
-    closeCreateModal();
+    await placeNamedCreation(creation);
+    closeAddModal();
   } catch (err) {
     console.warn(err);
     if (createStatus) {
@@ -2841,6 +2947,8 @@ createForm?.addEventListener("submit", async (e) => {
       createSubmit.textContent = "Create here";
     }
     if (createInput) createInput.disabled = false;
+  } finally {
+    if (addUpload) addUpload.disabled = false;
   }
 });
 
@@ -2849,10 +2957,6 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (confirmModal && !confirmModal.hidden) {
       closeConfirmModal();
-      return;
-    }
-    if (createModal && !createModal.hidden) {
-      closeCreateModal();
       return;
     }
     if (addModal && !addModal.hidden) {

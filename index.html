@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=44" />
+    <link rel="stylesheet" href="styles.css?v=45" />
   </head>
   <body>
     <div id="app">
@@ -218,42 +218,38 @@
         <div class="name-panel add-panel" role="dialog" aria-modal="true" aria-labelledby="add-title">
           <p class="name-brand">Lumen</p>
           <h2 class="name-title" id="add-title">Add</h2>
+
+          <form id="create-form" class="add-create-block">
+            <p class="name-file">Create an animated cutout where you’re aiming</p>
+            <input
+              id="create-input"
+              class="name-input"
+              type="text"
+              maxlength="120"
+              placeholder='e.g. create a snake'
+              autocomplete="off"
+              autocapitalize="sentences"
+              enterkeyhint="go"
+            />
+            <button type="submit" id="create-submit" class="cta name-submit add-create-submit">
+              Create here
+            </button>
+            <p class="name-hint" id="create-status" hidden></p>
+          </form>
+
+          <div class="add-divider" aria-hidden="true"><span>or upload</span></div>
+
           <button type="button" id="add-upload" class="add-option">
             Upload video
           </button>
-          <button type="button" id="add-create" class="add-option add-option-signal">
-            Create from prompt
-          </button>
+          <p class="add-upload-hint">
+            Opens Take Video, Photo Library, Files, Drive, and other sources on your phone.
+          </p>
+
           <button type="button" id="add-cancel" class="ghost-btn add-cancel">
             Cancel
           </button>
         </div>
-      </div>
-
-      <div id="create-modal" class="name-modal" hidden>
-        <form id="create-form" class="name-panel">
-          <p class="name-brand">Lumen</p>
-          <h2 class="name-title">Create</h2>
-          <p class="name-file">Pins a cutout where you’re aiming — transparent background.</p>
-          <input
-            id="create-input"
-            class="name-input"
-            type="text"
-            maxlength="120"
-            placeholder='e.g. create a snake'
-            required
-            autocomplete="off"
-            autocapitalize="sentences"
-            enterkeyhint="go"
-          />
-          <div class="name-actions">
-            <button type="button" id="create-cancel" class="ghost-btn">Cancel</button>
-            <button type="submit" id="create-submit" class="cta name-submit">
-              Create here
-            </button>
-          </div>
-          <p class="name-hint" id="create-status" hidden></p>
-        </form>
       </div>
 
       <div id="map-modal" class="map-modal" hidden>
@@ -296,6 +292,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=44"></script>
+    <script type="module" src="app.js?v=45"></script>
   </body>
 </html>
