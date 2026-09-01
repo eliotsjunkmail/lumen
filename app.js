@@ -131,6 +131,8 @@ const state = {
   orientReady: false,
   northAligned: false,
   theaterAnimId: null,
+  dandelion: null,
+  blow: null,
 };
 
 let renderer;
@@ -390,14 +392,50 @@ function getLookForwardFlat() {
   return forward;
 }
 
-function placementAlongLook(distance = 3.2) {
+function placementAlongLook(distance = 3.2, y = 1.4) {
   const forward = getLookForwardFlat();
   const origin = camera ? camera.position : new THREE.Vector3(0, 1.4, 0);
   return [
     origin.x + forward.x * distance,
-    1.4,
+    y,
     origin.z + forward.z * distance,
   ];
+}
+
+function getLookForward() {
+  if (!camera) return new THREE.Vector3(0, 0, -1);
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  if (forward.lengthSq() < 0.0001) forward.set(0, 0, -1);
+  return forward.normalize();
+}
+
+/** Birds, planes, and other airborne subjects sit in the sky instead of on the ground. */
+function isFlyingSubject(text) {
+  const t = String(text || "").toLowerCase();
+  if (!t) return false;
+  return /\b(bird|birds|eagle|eagles|hawk|hawks|owl|owls|parrot|parrots|crow|crows|raven|ravens|sparrow|sparrows|pigeon|pigeons|dove|doves|seagull|seagulls|gull|gulls|albatross|hummingbird|hummingbirds|falcon|falcons|vulture|vultures|swan|swans|duck|ducks|goose|geese|heron|stork|pelican|toucan|macaw|canary|finch|robin|bluejay|cardinal|woodpecker|flamingo|peacock|condor|kite|kites|plane|planes|airplane|airplanes|aeroplane|aeroplanes|jet|jets|airliner|helicopter|helicopters|chopper|drone|drones|quadcopter|ufo|ufos|spaceship|spacecraft|rocket|rockets|butterfly|butterflies|moth|moths|dragonfly|dragonflies|bee|bees|wasp|wasps|hornet|hornets|fly|flies|firefly|bat|bats|pterodactyl|pteranodon|dragon|dragons|phoenix|griffin|griffon|pegasus|angel|angels|fairy|fairies|pixie|blimp|zeppelin|glider|paraglider|airship|seaplane|biplane|warplane|hot[- ]?air[- ]?balloon|hang[- ]?glider|superhero|superman|witch|hovering|soaring|flying|in flight|in the (air|sky)|with wings)\b/.test(
+    t
+  );
+}
+
+function defaultHudHint() {
+  if (state.dandelion?.awaitingBlow) return "Blow into the mic to scatter the seeds";
+  return "Within 25 ft, aim from any direction";
+}
+
+function syncCreationStand(node) {
+  if (!node || node.kind !== "image" || !node.screen?.geometry) return;
+  const h = node.screen.geometry.parameters?.height || 1.35;
+  if (node.flying) {
+    node.restY = 2.55 + Math.min(0.75, h * 0.2);
+    node.baseY = node.restY;
+    node.velY = 0;
+    node.settled = true;
+  } else {
+    node.restY = h * 0.5 + 0.02;
+    if (node.settled) node.baseY = node.restY;
+  }
+  if (node.beacon) node.beacon.visible = false;
 }
 
 function updateGeoAnchors() {
@@ -642,6 +680,7 @@ function applyMediaAspect(node, width, height) {
   if (node.thumbsBadge) {
     node.thumbsBadge.position.set(finalW * 0.42, finalH * 0.38, 0.04);
   }
+  syncCreationStand(node);
 }
 
 function applyVideoAspect(node) {
@@ -718,6 +757,7 @@ function createNode(item, index) {
     })
   );
   label.position.set(0, 1.2, 0.02);
+  label.visible = kind !== "image";
 
   const beacon = new THREE.Mesh(
     new THREE.SphereGeometry(0.08, 16, 16),
@@ -758,6 +798,10 @@ function createNode(item, index) {
     video,
     texture,
     radar,
+    flying: kind === "image" && Boolean(item.flying || isFlyingSubject(item.title)),
+    settled: kind !== "image" ? true : Boolean(item.flying || item.settled),
+    velY: Number(item.velY) || 0,
+    restY: kind === "image" && !(item.flying || isFlyingSubject(item.title)) ? 1.07 : item.position[1],
     baseY: item.position[1],
     phase: index * 1.1,
     previewing: false,
@@ -1007,12 +1051,36 @@ function updateCameraRig(dt) {
   camera.quaternion.slerp(_targetQuat, blend);
 }
 
-function updateNodes(t) {
+function updateNodes(t, dt) {
   for (const node of state.nodes) {
     if (node.anchorX != null) node.group.position.x = node.anchorX;
     if (node.anchorZ != null) node.group.position.z = node.anchorZ;
-    node.group.position.y = node.baseY + Math.sin(t * 1.2 + node.phase) * 0.08;
-    node.beacon.scale.setScalar(1 + Math.sin(t * 3 + node.phase) * 0.25);
+
+    if (node.kind === "image") {
+      if (node.flying) {
+        node.group.position.y =
+          node.baseY + Math.sin(t * 1.35 + node.phase) * 0.18;
+      } else {
+        if (!node.settled) {
+          node.velY = (node.velY || 0) - 9.8 * dt;
+          node.baseY += node.velY * dt;
+          const floorY = node.restY ?? 0.7;
+          if (node.baseY <= floorY) {
+            node.baseY = floorY;
+            if (node.velY < -2.4) node.velY = -node.velY * 0.22;
+            else {
+              node.velY = 0;
+              node.settled = true;
+            }
+          }
+        }
+        node.group.position.y = node.baseY;
+      }
+      if (node.beacon) node.beacon.visible = false;
+    } else {
+      node.group.position.y = node.baseY + Math.sin(t * 1.2 + node.phase) * 0.08;
+      node.beacon.scale.setScalar(1 + Math.sin(t * 3 + node.phase) * 0.25);
+    }
 
     const hot = state.focused === node;
     if (node.kind === "image") {
@@ -1031,16 +1099,17 @@ function updateNodes(t) {
           }
         }
       }
-      const sway = Math.sin(t * 2.4 + node.phase) * 0.05;
-      const breathe = 1 + Math.sin(t * 3.1 + node.phase) * 0.035;
+      const swayAmp = node.flying ? 0.055 : 0.028;
+      const sway = Math.sin(t * 2.4 + node.phase) * swayAmp;
+      const breathe = 1 + Math.sin(t * 3.1 + node.phase) * (node.flying ? 0.04 : 0.02);
       node.screen.rotation.z = sway;
       node.screen.scale.setScalar(breathe);
     } else {
       node.frame.material.opacity = hot ? 0.55 : 0.16;
       node.screen.rotation.z = 0;
       node.screen.scale.set(1, 1, 1);
+      node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
     }
-    node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
 
     // Billboard: readable from any direction when in range
     const dx = camera.position.x - node.group.position.x;
@@ -1725,7 +1794,7 @@ function setFocus(node) {
     pausePreviews(node.id);
   } else {
     focusLabel.textContent = "Scan the field";
-    hudHint.textContent = "Within 25 ft, aim from any direction";
+    hudHint.textContent = defaultHudHint();
     // Keep Watch tappable so we can prompt to aim (disabled buttons eat taps on iOS)
     watchBtn.disabled = false;
     watchBtn.textContent = "Watch";
@@ -2181,12 +2250,355 @@ function updateHandGestures(nowMs) {
   addThumbsUp(state.focused);
 }
 
+function makePappusTexture() {
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 64;
+  const g = c.getContext("2d");
+  const grd = g.createRadialGradient(32, 32, 1, 32, 32, 30);
+  grd.addColorStop(0, "rgba(255,255,252,0.95)");
+  grd.addColorStop(0.22, "rgba(255,250,240,0.72)");
+  grd.addColorStop(0.55, "rgba(245,240,230,0.28)");
+  grd.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grd;
+  g.beginPath();
+  g.arc(32, 32, 30, 0, Math.PI * 2);
+  g.fill();
+  // Fine filaments so it reads as a seed, not a blob
+  g.strokeStyle = "rgba(255,252,245,0.35)";
+  g.lineWidth = 1;
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    g.beginPath();
+    g.moveTo(32, 32);
+    g.lineTo(32 + Math.cos(a) * 28, 32 + Math.sin(a) * 28);
+    g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function fibonacciSphere(count, radius) {
+  const pts = [];
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < count; i++) {
+    const y = 1 - (i / Math.max(1, count - 1)) * 2;
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    const theta = golden * i;
+    pts.push(
+      new THREE.Vector3(
+        Math.cos(theta) * r * radius,
+        y * radius,
+        Math.sin(theta) * r * radius
+      )
+    );
+  }
+  return pts;
+}
+
+function spawnDandelionPuff() {
+  if (!scene || state.dandelion) return;
+
+  const puffTex = makePappusTexture();
+  const group = new THREE.Group();
+  const head = new THREE.Group();
+  head.position.y = 0.08;
+  group.add(head);
+
+  const stemMat = new THREE.MeshBasicMaterial({ color: 0x5a8a3a });
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, 1.12, 8), stemMat);
+  stem.position.y = -0.56;
+  group.add(stem);
+
+  const calyx = new THREE.Mesh(
+    new THREE.SphereGeometry(0.035, 10, 8),
+    new THREE.MeshBasicMaterial({ color: 0x3d6b24 })
+  );
+  head.add(calyx);
+
+  const leaf = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.18, 0.06),
+    new THREE.MeshBasicMaterial({ color: 0x4f8a32, side: THREE.DoubleSide, transparent: true, opacity: 0.92 })
+  );
+  leaf.position.set(0.07, -0.72, 0.01);
+  leaf.rotation.z = 0.45;
+  group.add(leaf);
+
+  const seedMat = new THREE.SpriteMaterial({
+    map: puffTex,
+    transparent: true,
+    depthWrite: false,
+    opacity: 0.92,
+  });
+  const kernelMat = new THREE.MeshBasicMaterial({ color: 0x6b4a22 });
+  const kernelGeo = new THREE.SphereGeometry(0.007, 6, 5);
+
+  const seeds = [];
+  const pts = fibonacciSphere(90, 0.2);
+  for (let i = 0; i < pts.length; i++) {
+    const local = pts[i];
+    const sprite = new THREE.Sprite(seedMat.clone());
+    sprite.scale.set(0.14, 0.14, 0.14);
+    sprite.position.copy(local);
+    head.add(sprite);
+
+    const kernel = new THREE.Mesh(kernelGeo, kernelMat);
+    kernel.position.copy(local).multiplyScalar(0.55);
+    head.add(kernel);
+
+    seeds.push({
+      sprite,
+      kernel,
+      local: local.clone(),
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      scattered: false,
+      life: 0,
+      maxLife: 6.5 + Math.random() * 2.4,
+      spin: Math.random() * Math.PI * 2,
+    });
+  }
+
+  scene.add(group);
+    state.dandelion = {
+    group,
+    head,
+    stem,
+    leaf,
+    seeds,
+    puffTex,
+    kernelGeo,
+    awaitingBlow: true,
+    scattered: false,
+    locked: false,
+    lockAt: 0.55,
+    age: 0,
+    blowHold: 0,
+    fade: 1,
+  };
+  plantDandelionInFront();
+
+  if (!state.focused) hudHint.textContent = defaultHudHint();
+  setStatus("A dandelion — blow into the mic", 4200);
+}
+
+function plantDandelionInFront() {
+  const d = state.dandelion;
+  if (!d?.group || !camera) return;
+  const flat = getLookForwardFlat();
+  d.group.position.set(
+    camera.position.x + flat.x * 1.55,
+    1.16,
+    camera.position.z + flat.z * 1.55
+  );
+}
+
+function uiBlocksBlow() {
+  if (state.watching || state.naming || state.mapOpen) return true;
+  if (createModal && !createModal.hidden) return true;
+  if (addModal && !addModal.hidden) return true;
+  if (nameModal && !nameModal.hidden) return true;
+  if (confirmModal && !confirmModal.hidden) return true;
+  return false;
+}
+
+function sampleBlow() {
+  const b = state.blow;
+  if (!b?.analyser) return 0;
+  if (b.ctx?.state === "suspended") b.ctx.resume().catch(() => {});
+  if (!b.freq) b.freq = new Uint8Array(b.analyser.frequencyBinCount);
+  if (!b.time) b.time = new Float32Array(b.analyser.fftSize);
+  b.analyser.getByteFrequencyData(b.freq);
+  if (typeof b.analyser.getFloatTimeDomainData === "function") {
+    b.analyser.getFloatTimeDomainData(b.time);
+  } else {
+    const bytes = b.byteTime || (b.byteTime = new Uint8Array(b.analyser.fftSize));
+    b.analyser.getByteTimeDomainData(bytes);
+    for (let i = 0; i < bytes.length; i++) b.time[i] = (bytes[i] - 128) / 128;
+  }
+
+  let rms = 0;
+  for (let i = 0; i < b.time.length; i++) rms += b.time[i] * b.time[i];
+  rms = Math.sqrt(rms / Math.max(1, b.time.length));
+
+  const n = b.freq.length;
+  const lowEnd = Math.max(2, Math.floor(n * 0.1));
+  const highStart = Math.floor(n * 0.22);
+  let low = 0;
+  let high = 0;
+  for (let i = 0; i < lowEnd; i++) low += b.freq[i];
+  for (let i = highStart; i < n; i++) high += b.freq[i];
+  low /= lowEnd;
+  high /= Math.max(1, n - highStart);
+
+  // Blow is broadband hiss: energy in highs plus a noticeable RMS.
+  // Speech is more low/mid; require highs so talking is less likely to trigger.
+  if (rms < 0.04 || high < 16) return 0;
+  if (high < low * 0.42) return 0;
+  return rms * 3.2 + high / 255;
+}
+
+function scatterDandelion(strength = 1) {
+  const d = state.dandelion;
+  if (!d || d.scattered) return;
+  d.scattered = true;
+  d.awaitingBlow = false;
+  d.locked = true;
+
+  const look = getLookForward();
+  const amp = THREE.MathUtils.clamp(strength, 0.55, 2.4);
+
+  d.group.updateMatrixWorld(true);
+  const headWorld = new THREE.Vector3();
+  d.head.getWorldPosition(headWorld);
+
+  for (const seed of d.seeds) {
+    seed.sprite.updateMatrixWorld(true);
+    const world = new THREE.Vector3();
+    seed.sprite.getWorldPosition(world);
+    d.head.remove(seed.sprite);
+    d.head.remove(seed.kernel);
+    scene.add(seed.sprite);
+    scene.add(seed.kernel);
+    seed.sprite.position.copy(world);
+    seed.kernel.position.copy(world).addScaledVector(seed.local, -0.08);
+
+    const jitter = new THREE.Vector3(
+      (Math.random() - 0.5) * 1.15,
+      Math.random() * 0.55,
+      (Math.random() - 0.5) * 1.15
+    );
+    const radial = seed.local.clone().normalize().multiplyScalar(0.55 + Math.random() * 0.9);
+    seed.vx = look.x * (2.4 + Math.random() * 2.2) * amp + jitter.x + radial.x;
+    seed.vy = look.y * (1.4 + Math.random() * 1.1) * amp + 0.55 + jitter.y + radial.y * 0.35;
+    seed.vz = look.z * (2.4 + Math.random() * 2.2) * amp + jitter.z + radial.z;
+    seed.scattered = true;
+    seed.life = 0;
+  }
+
+  if (!state.focused) hudHint.textContent = "Within 25 ft, aim from any direction";
+  setStatus("Seeds on the wind", 2600);
+}
+
+function updateDandelion(t, dt) {
+  const d = state.dandelion;
+  if (!d) return;
+  d.age += dt;
+
+  if (!d.locked) {
+    plantDandelionInFront();
+    if (d.age >= d.lockAt) d.locked = true;
+  }
+
+  if (!d.scattered) {
+    d.head.rotation.y = t * 0.35;
+    const breathe = 1 + Math.sin(t * 1.8) * 0.04;
+    d.head.scale.setScalar(breathe);
+    for (const seed of d.seeds) {
+      const wobble = 1 + Math.sin(t * 3.2 + seed.spin) * 0.06;
+      seed.sprite.scale.set(0.14 * wobble, 0.14 * wobble, 0.14);
+    }
+
+    if (!uiBlocksBlow()) {
+      const score = sampleBlow();
+      if (score > 0) d.blowHold += dt;
+      else d.blowHold = Math.max(0, d.blowHold - dt * 2);
+      if (d.blowHold > 0.07) scatterDandelion(score || 1);
+    }
+    return;
+  }
+
+  // Stem leans after the blow
+  d.stem.rotation.z = THREE.MathUtils.lerp(d.stem.rotation.z, 0.18, Math.min(1, dt * 2));
+  d.fade = Math.max(0, d.fade - dt * 0.12);
+  d.stem.material.opacity = 0.35 + d.fade * 0.65;
+  d.stem.material.transparent = true;
+  if (d.leaf.material) {
+    d.leaf.material.opacity = d.fade * 0.7;
+  }
+
+  let alive = 0;
+  for (const seed of d.seeds) {
+    if (!seed.scattered) continue;
+    seed.life += dt;
+    if (seed.life > seed.maxLife) {
+      seed.sprite.visible = false;
+      seed.kernel.visible = false;
+      continue;
+    }
+    alive += 1;
+    // Light seeds: float forward, settle slowly
+    seed.vy -= 1.55 * dt;
+    seed.vx *= 1 - 0.55 * dt;
+    seed.vz *= 1 - 0.55 * dt;
+    seed.vy *= 1 - 0.28 * dt;
+    seed.sprite.position.x += seed.vx * dt;
+    seed.sprite.position.y += seed.vy * dt;
+    seed.sprite.position.z += seed.vz * dt;
+    if (seed.sprite.position.y < 0.04) {
+      seed.sprite.position.y = 0.04;
+      seed.vy = Math.abs(seed.vy) * 0.18;
+      seed.vx *= 0.82;
+      seed.vz *= 0.82;
+    }
+    seed.kernel.position.copy(seed.sprite.position);
+    seed.kernel.position.y -= 0.012;
+    const fade = 1 - seed.life / seed.maxLife;
+    seed.sprite.material.opacity = 0.2 + fade * 0.72;
+    const s = 0.09 + fade * 0.05;
+    seed.sprite.scale.set(s, s, s);
+  }
+
+  if (alive === 0 && d.fade <= 0.02) {
+    scene.remove(d.group);
+    d.puffTex?.dispose();
+    d.kernelGeo?.dispose();
+    for (const seed of d.seeds) {
+      scene.remove(seed.sprite);
+      scene.remove(seed.kernel);
+      seed.sprite.material?.dispose();
+    }
+    state.dandelion = null;
+  }
+}
+
+async function startBlowMic() {
+  if (state.blow || !navigator.mediaDevices?.getUserMedia) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+      video: false,
+    });
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AC();
+    if (ctx.state === "suspended") {
+      await ctx.resume().catch(() => {});
+    }
+    const src = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.38;
+    src.connect(analyser);
+    state.blow = { stream, ctx, analyser };
+  } catch (err) {
+    console.warn("Mic unavailable for dandelion blow", err);
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
-  const dt = state.clock.getDelta();
+  const dt = Math.min(0.05, state.clock.getDelta());
   const t = state.clock.elapsedTime;
   updateCameraRig(dt);
-  updateNodes(t);
+  updateNodes(t, dt);
+  updateDandelion(t, dt);
   updateRadar();
   updateGuideArrow();
   updateMapView();
@@ -2234,6 +2646,7 @@ function bootField(message) {
 
   if (renderer) animate();
   setStatus(message);
+  spawnDandelionPuff();
   if (camEl.srcObject) {
     camEl.play().catch(() => {});
   }
@@ -2255,7 +2668,9 @@ function bootField(message) {
       updateGeoAnchors();
     } catch (err) {
       console.warn(err);
-      setStatus("Enable location to pin videos within 25 ft", 4500);
+      if (!state.dandelion?.awaitingBlow) {
+        setStatus("Enable location to pin videos within 25 ft", 4500);
+      }
     }
     syncSharedSpots();
     await processNameQueue();
@@ -2345,6 +2760,12 @@ async function enterField() {
       "radial-gradient(circle at 30% 20%, #1a3a2a, #06100c 60%)";
   }
 
+  startBlowMic();
+
+  if (!motionOk) {
+    setStatus("Allow motion access for world-locked AR", 4200);
+  }
+
   bootField(
     cameraOk
       ? motionOk
@@ -2353,9 +2774,6 @@ async function enterField() {
       : "Camera blocked — drag to explore demo videos"
   );
 
-  if (!motionOk) {
-    setStatus("Allow motion access for world-locked AR", 4200);
-  }
   state.booting = false;
 }
 
@@ -2689,8 +3107,13 @@ function titleFromCreatePrompt(prompt) {
 }
 
 function buildCreateImageUrl(subject) {
+  const flying = isFlyingSubject(subject);
+  const pose = flying
+    ? "in flight, airborne, wings spread, not standing, no perch, high in the air"
+    : "standing on the ground, full body, feet visible, upright";
   const prompt = [
     subject,
+    pose,
     "full body",
     "centered",
     "isolated object cutout",
@@ -2886,7 +3309,9 @@ async function placeNamedCreation(creation) {
     }
   }
 
-  const position = placementAlongLook(3.2);
+  const flying = isFlyingSubject(name);
+  const spawnY = flying ? 2.72 : (camera?.position.y ?? 1.4) + 1.05;
+  const position = placementAlongLook(3.2, spawnY);
   const aim = aimMetersOnGround(3.2);
   const pinGeo = offsetLatLng(geo.lat, geo.lng, aim.east, aim.north);
 
@@ -2895,11 +3320,13 @@ async function placeNamedCreation(creation) {
       id: `create-${state.uploadCount}`,
       kind: "image",
       title: name,
-      blurb: "Within 25 ft · aim from any side",
+      blurb: flying ? "Flying above · aim from any side" : "On the ground · aim from any side",
       src,
       animFrames,
       animUrls,
       position,
+      flying,
+      settled: flying,
       deletable: true,
       lat: pinGeo.lat,
       lng: pinGeo.lng,
@@ -2916,7 +3343,9 @@ async function placeNamedCreation(creation) {
   }
   node.thumbUrl = src;
   setFocus(node);
-  setStatus(`“${name}” created where you’re aiming`);
+  setStatus(
+    flying ? `“${name}” is flying where you’re aiming` : `“${name}” landed where you’re aiming`
+  );
   return node;
 }
 
@@ -3114,3 +3543,43 @@ window.addEventListener("keydown", (e) => {
     if (node) openTheater(node);
   }
 });
+
+window.__lumenScatterDandelion = (strength) => scatterDandelion(Number(strength) || 1.1);
+window.__lumenIsFlyingSubject = isFlyingSubject;
+window.__lumenPlaceTest = (title) => {
+  const name = String(title || "Dog");
+  const flying = isFlyingSubject(name);
+  const canvasEl = document.createElement("canvas");
+  canvasEl.width = 512;
+  canvasEl.height = 640;
+  const ctx = canvasEl.getContext("2d");
+  ctx.fillStyle = flying ? "#8ecfff" : "#d4ff6a";
+  ctx.beginPath();
+  ctx.ellipse(256, 380, 150, 210, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#06100c";
+  ctx.font = "bold 34px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(name, 256, 64);
+  const img = new Image();
+  img.src = canvasEl.toDataURL();
+  const spawnY = flying ? 2.72 : (camera?.position.y ?? 1.4) + 1.05;
+  const position = placementAlongLook(3.2, spawnY);
+  const node = createNode(
+    {
+      id: `test-${Date.now()}`,
+      kind: "image",
+      title: name,
+      blurb: flying ? "Flying above" : "On the ground",
+      src: img.src,
+      animFrames: [img],
+      position,
+      flying,
+      settled: flying,
+      deletable: true,
+    },
+    state.nodes.length
+  );
+  state.nodes.push(node);
+  return { flying, spawnY, restY: node.restY, baseY: node.baseY };
+};
