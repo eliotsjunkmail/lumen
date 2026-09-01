@@ -49,10 +49,23 @@ const statusEl = document.getElementById("status");
 const radarDots = document.getElementById("radar-dots");
 const theater = document.getElementById("theater");
 const theaterVideo = document.getElementById("theater-video");
+const theaterImage = document.getElementById("theater-image");
 const theaterTitle = document.getElementById("theater-title");
+const theaterScreenWrap = document.querySelector(".theater-screen-wrap");
 const uploadNote = document.getElementById("upload-note");
 const videoInputGate = document.getElementById("video-input-gate");
 const videoInputField = document.getElementById("video-input-field");
+const addBtn = document.getElementById("add-btn");
+const addModal = document.getElementById("add-modal");
+const addUpload = document.getElementById("add-upload");
+const addCreate = document.getElementById("add-create");
+const addCancel = document.getElementById("add-cancel");
+const createModal = document.getElementById("create-modal");
+const createForm = document.getElementById("create-form");
+const createInput = document.getElementById("create-input");
+const createCancel = document.getElementById("create-cancel");
+const createSubmit = document.getElementById("create-submit");
+const createStatus = document.getElementById("create-status");
 const deleteBtn = document.getElementById("delete-btn");
 const theaterDelete = document.getElementById("theater-delete");
 const theaterClose = document.getElementById("theater-close");
@@ -421,7 +434,7 @@ function setStatus(message, ms = 2800) {
   statusTimer = setTimeout(() => statusEl.classList.remove("is-on"), ms);
 }
 
-function createLabelTexture(title, blurb, { reserveDelete = false, thumbs = 0 } = {}) {
+function createLabelTexture(title, blurb, { reserveDelete = false, thumbs = 0, kind = "video" } = {}) {
   const c = document.createElement("canvas");
   c.width = 1024;
   c.height = 256;
@@ -435,7 +448,7 @@ function createLabelTexture(title, blurb, { reserveDelete = false, thumbs = 0 } 
   ctx.stroke();
   ctx.fillStyle = "#c6ff4a";
   ctx.font = "700 42px Manrope, sans-serif";
-  ctx.fillText("WATCH", 64, 110);
+  ctx.fillText(kind === "image" ? "LOOK" : "WATCH", 64, 110);
   ctx.fillStyle = "#eef7f0";
   ctx.font = "800 64px Syne, sans-serif";
   // Leave room on the right for the HTML × when this is a deletable upload
@@ -484,6 +497,7 @@ function refreshNodeChrome(node) {
   node.label.material.map = createLabelTexture(node.title, node.blurb || "", {
     reserveDelete: Boolean(node.deletable),
     thumbs: node.thumbs || 0,
+    kind: node.kind || "video",
   });
   node.label.material.needsUpdate = true;
   old?.dispose?.();
@@ -604,19 +618,12 @@ function placementFromAim(spreadIndex = 0, spreadCount = 1) {
   return [_place.x, _place.y, _place.z];
 }
 
-function applyVideoAspect(node) {
-  const w = node.video.videoWidth || 16;
-  const h = node.video.videoHeight || 9;
-  if (w < 2 || h < 2) return;
-
-  const aspect = w / h;
-  const portrait = aspect < 1;
-  // Match recorded orientation: tall phone clips stay portrait planes
-  const base = portrait ? 2.05 : 1.35;
-  const height = portrait ? base : base;
-  const width = height * aspect;
-  const maxW = portrait ? 1.55 : 2.8;
-  const finalW = Math.min(width, maxW);
+function applyMediaAspect(node, width, height) {
+  if (!node?.screen || !width || !height) return;
+  const aspect = width / height;
+  // Creations float a bit larger; videos keep the existing phone-friendly size
+  const base = node.kind === "image" ? 2.1 : 2.4;
+  const finalW = aspect >= 1 ? base : base * aspect;
   const finalH = finalW / aspect;
 
   node.screen.geometry.dispose();
@@ -632,17 +639,41 @@ function applyVideoAspect(node) {
   }
 }
 
+function applyVideoAspect(node) {
+  const w = node.video?.videoWidth || 0;
+  const h = node.video?.videoHeight || 0;
+  if (w > 1 && h > 1) applyMediaAspect(node, w, h);
+}
+
 function createNode(item, index) {
   const group = new THREE.Group();
   group.position.set(...item.position);
+  const kind = item.kind === "image" ? "image" : "video";
 
-  const video = makeVideoElement(item.src);
-  const texture = new THREE.VideoTexture(video);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  let video = null;
+  let texture;
+  let pendingImage = null;
+  if (kind === "image") {
+    texture = new THREE.Texture();
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = false;
+    pendingImage = new Image();
+    if (!String(item.src).startsWith("blob:")) pendingImage.crossOrigin = "anonymous";
+  } else {
+    video = makeVideoElement(item.src);
+    texture = new THREE.VideoTexture(video);
+    texture.colorSpace = THREE.SRGBColorSpace;
+  }
 
   const screen = new THREE.Mesh(
     new THREE.PlaneGeometry(2.4, 1.35),
-    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
+    new THREE.MeshBasicMaterial({
+      map: texture,
+      side: THREE.DoubleSide,
+      transparent: kind === "image",
+      alphaTest: kind === "image" ? 0.08 : 0,
+      depthWrite: kind !== "image",
+    })
   );
   screen.position.y = 0.2;
   screen.userData.hit = true;
@@ -652,18 +683,20 @@ function createNode(item, index) {
     new THREE.MeshBasicMaterial({
       color: 0xc6ff4a,
       transparent: true,
-      opacity: 0.18,
+      opacity: kind === "image" ? 0 : 0.18,
       side: THREE.DoubleSide,
     })
   );
   frame.position.z = -0.01;
   frame.position.y = 0.2;
+  frame.visible = kind !== "image";
 
   const label = new THREE.Mesh(
     new THREE.PlaneGeometry(2.2, 0.55),
     new THREE.MeshBasicMaterial({
       map: createLabelTexture(item.title, item.blurb, {
         reserveDelete: Boolean(item.deletable),
+        kind,
       }),
       transparent: true,
       side: THREE.DoubleSide,
@@ -683,11 +716,16 @@ function createNode(item, index) {
   const radar = document.createElement("span");
   const isUserPin = Boolean(item.deletable || item.worldLocked);
   radar.className = isUserPin ? "radar-dot radar-dot--user" : "radar-dot";
-  radar.title = isUserPin ? "Your recording" : item.title || "Video";
+  radar.title = isUserPin
+    ? kind === "image"
+      ? "Your creation"
+      : "Your recording"
+    : item.title || "Video";
   radarDots.appendChild(radar);
 
   const node = {
     ...item,
+    kind,
     demo: Boolean(item.demo),
     deletable: Boolean(item.deletable),
     thumbs: Number(item.thumbs) || 0,
@@ -714,9 +752,24 @@ function createNode(item, index) {
     node.radar.style.display = node.inRange ? "" : "none";
   }
 
-  const onMeta = () => applyVideoAspect(node);
-  if (video.readyState >= 1) onMeta();
-  else video.addEventListener("loadedmetadata", onMeta, { once: true });
+  if (video) {
+    const onMeta = () => applyVideoAspect(node);
+    if (video.readyState >= 1) onMeta();
+    else video.addEventListener("loadedmetadata", onMeta, { once: true });
+  }
+
+  if (pendingImage) {
+    pendingImage.onload = () => {
+      texture.image = pendingImage;
+      texture.needsUpdate = true;
+      applyMediaAspect(node, pendingImage.naturalWidth, pendingImage.naturalHeight);
+    };
+    pendingImage.onerror = () => {
+      console.warn("Creation image failed to decode");
+      setStatus("Creation image failed to load", 3200);
+    };
+    pendingImage.src = item.src;
+  }
 
   if (node.thumbs > 0) refreshNodeChrome(node);
 
@@ -727,13 +780,15 @@ function disposeNode(node) {
   scene.remove(node.group);
   node.radar?.remove();
   removeLeafletMarker(node);
-  try {
-    node.video.pause();
-  } catch {
-    /* ignore */
+  if (node.video) {
+    try {
+      node.video.pause();
+    } catch {
+      /* ignore */
+    }
+    node.video.removeAttribute("src");
+    node.video.load();
   }
-  node.video.removeAttribute("src");
-  node.video.load();
   if (node.objectUrl) URL.revokeObjectURL(node.objectUrl);
   node.texture?.dispose();
   node.screen.geometry.dispose();
@@ -915,7 +970,11 @@ function updateNodes(t) {
     node.beacon.scale.setScalar(1 + Math.sin(t * 3 + node.phase) * 0.25);
 
     const hot = state.focused === node;
-    node.frame.material.opacity = hot ? 0.55 : 0.16;
+    if (node.kind === "image") {
+      node.frame.visible = false;
+    } else {
+      node.frame.material.opacity = hot ? 0.55 : 0.16;
+    }
     node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
 
     // Billboard: readable from any direction when in range
@@ -1380,7 +1439,10 @@ function refreshMapList() {
     if (atIndex !== row.li) mapList.insertBefore(row.li, atIndex || null);
 
     if (row.title.textContent !== node.title) row.title.textContent = node.title;
-    row.play.setAttribute("aria-label", `Watch ${node.title}`);
+    row.play.setAttribute(
+      "aria-label",
+      `${node.kind === "image" ? "View" : "Watch"} ${node.title}`
+    );
 
     const place =
       node.lat != null && node.lng != null ? lookupPlace(node.lat, node.lng) : null;
@@ -1535,6 +1597,7 @@ function updateGuideArrow() {
 
 async function ensurePreview(node) {
   if (!node || node.previewing || state.watching) return;
+  if (!node.video || node.kind === "image") return;
   try {
     node.video.currentTime = Math.min(1, node.video.duration || 1);
     await node.video.play();
@@ -1547,7 +1610,13 @@ async function ensurePreview(node) {
 function pausePreviews(exceptId) {
   for (const node of state.nodes) {
     if (node.id === exceptId) continue;
-    node.video.pause();
+    if (node.video) {
+      try {
+        node.video.pause();
+      } catch {
+        /* ignore */
+      }
+    }
     node.previewing = false;
   }
 }
@@ -1585,12 +1654,14 @@ function setFocus(node) {
       : node.title;
     hudHint.textContent = node.blurb || "Aim locked";
     watchBtn.disabled = false;
+    watchBtn.textContent = node.kind === "image" ? "View" : "Watch";
     ensurePreview(node);
     pausePreviews(node.id);
   } else {
     focusLabel.textContent = "Scan the field";
     hudHint.textContent = "Within 25 ft, aim from any direction";
     watchBtn.disabled = true;
+    watchBtn.textContent = "Watch";
     pausePreviews(null);
   }
   updateDeleteControls();
@@ -1601,6 +1672,7 @@ function openTheater(node, opts = {}) {
   const fromMap = Boolean(opts.fromMap) || state.mapOpen;
   closeMapModal();
   closeConfirmModal();
+  closeAddModal();
   state.watching = true;
   state.watchingNode = node;
   state.theaterFromMap = fromMap;
@@ -1611,21 +1683,40 @@ function openTheater(node, opts = {}) {
     ? `${node.title} 👍${node.thumbs > 1 ? node.thumbs : ""}`
     : node.title;
   theaterDelete.hidden = !node.deletable;
-  const knownW = node.video?.videoWidth || 0;
-  const knownH = node.video?.videoHeight || 0;
-  theaterVideo.style.aspectRatio = knownW > 1 && knownH > 1 ? `${knownW} / ${knownH}` : "9 / 16";
-  theaterVideo.loop = true;
-  theaterVideo.removeAttribute("controls");
-  theaterVideo.setAttribute("playsinline", "");
-  theaterVideo.setAttribute("webkit-playsinline", "");
-  theaterVideo.src = node.src;
-  theaterVideo.muted = false;
-  theaterVideo.play().catch(() => {
-    // Autoplay with sound can be blocked — retry muted then unmute on tap
-    theaterVideo.muted = true;
-    theaterVideo.play().catch(() => setStatus("Tap the video to start"));
-  });
-  setStatus(`Watching ${node.title}`);
+
+  const isImage = node.kind === "image";
+  theaterScreenWrap?.classList.toggle("is-image", isImage);
+  if (theaterImage) theaterImage.hidden = !isImage;
+  if (theaterVideo) theaterVideo.hidden = isImage;
+
+  if (isImage) {
+    theaterVideo.pause();
+    theaterVideo.removeAttribute("src");
+    theaterVideo.load();
+    theaterImage.src = node.src;
+    theaterImage.alt = node.title || "Creation";
+    setStatus(`Viewing ${node.title}`);
+  } else {
+    if (theaterImage) {
+      theaterImage.removeAttribute("src");
+      theaterImage.alt = "";
+    }
+    const knownW = node.video?.videoWidth || 0;
+    const knownH = node.video?.videoHeight || 0;
+    theaterVideo.style.aspectRatio =
+      knownW > 1 && knownH > 1 ? `${knownW} / ${knownH}` : "9 / 16";
+    theaterVideo.loop = true;
+    theaterVideo.removeAttribute("controls");
+    theaterVideo.setAttribute("playsinline", "");
+    theaterVideo.setAttribute("webkit-playsinline", "");
+    theaterVideo.src = node.src;
+    theaterVideo.muted = false;
+    theaterVideo.play().catch(() => {
+      theaterVideo.muted = true;
+      theaterVideo.play().catch(() => setStatus("Tap the video to start"));
+    });
+    setStatus(`Watching ${node.title}`);
+  }
   updateDeleteControls();
 }
 
@@ -1638,9 +1729,18 @@ function closeTheaterMode() {
   field.classList.remove("is-watching");
   theater.hidden = true;
   theaterDelete.hidden = true;
-  theaterVideo.pause();
-  theaterVideo.removeAttribute("src");
-  theaterVideo.load();
+  theaterScreenWrap?.classList.remove("is-image");
+  if (theaterImage) {
+    theaterImage.hidden = true;
+    theaterImage.removeAttribute("src");
+    theaterImage.alt = "";
+  }
+  if (theaterVideo) {
+    theaterVideo.hidden = false;
+    theaterVideo.pause();
+    theaterVideo.removeAttribute("src");
+    theaterVideo.load();
+  }
   if (state.focused) ensurePreview(state.focused);
   updateDeleteControls();
   if (returnToMap) openMapModal();
@@ -2103,8 +2203,8 @@ async function enterField() {
   bootField(
     cameraOk
       ? motionOk
-        ? "Thumbs-up to react · Add to pin a clip"
-        : "Motion blocked — drag to look · Add to pin a clip"
+        ? "Thumbs-up to react · Add to pin or create"
+        : "Motion blocked — drag to look · Add to pin or create"
       : "Camera blocked — drag to explore demo videos"
   );
 
@@ -2429,6 +2529,213 @@ async function placeNamedVideo(file, name) {
   return node;
 }
 
+/** Pull a short display title out of a create prompt. */
+function titleFromCreatePrompt(prompt) {
+  let t = String(prompt || "").trim();
+  t = t.replace(/^(please\s+)?(create|make|generate|draw|show|add)\s+(me\s+)?(a|an|the)\s+/i, "");
+  t = t.replace(/^(please\s+)?(create|make|generate|draw|show|add)\s+/i, "");
+  t = t.replace(/\s+/g, " ").trim();
+  if (!t) return "Creation";
+  return t.charAt(0).toUpperCase() + t.slice(1).slice(0, 47);
+}
+
+function buildCreateImageUrl(subject) {
+  const prompt = [
+    subject,
+    "full body",
+    "centered",
+    "isolated object cutout",
+    "pure white background",
+    "no shadow",
+    "no ground",
+    "no text",
+    "studio product photo",
+  ].join(", ");
+  const seed = Math.floor(Math.random() * 1e9);
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(
+    prompt
+  )}?width=768&height=768&nologo=true&seed=${seed}`;
+}
+
+function loadHtmlImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    if (!String(src).startsWith("blob:")) img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Image failed to load"));
+    img.src = src;
+  });
+}
+
+/**
+ * Knock out near-white (and sampled corner) background so the creation
+ * floats over the camera feed like a sticker.
+ */
+async function cutoutTransparentPng(sourceUrl) {
+  const img = await loadHtmlImage(sourceUrl);
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const d = imageData.data;
+
+  const sample = (x, y) => {
+    const i = (y * w + x) * 4;
+    return [d[i], d[i + 1], d[i + 2]];
+  };
+  const corners = [
+    sample(2, 2),
+    sample(w - 3, 2),
+    sample(2, h - 3),
+    sample(w - 3, h - 3),
+  ];
+  const bg = corners
+    .reduce((acc, c) => [acc[0] + c[0], acc[1] + c[1], acc[2] + c[2]], [0, 0, 0])
+    .map((v) => v / corners.length);
+
+  const dist = (r, g, b) =>
+    Math.hypot(r - bg[0], g - bg[1], b - bg[2]);
+  // Also treat very light pixels as background even if tinted
+  const isBg = (r, g, b) => {
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    return dist(r, g, b) < 48 || (luma > 235 && dist(r, g, b) < 90);
+  };
+
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i];
+    const g = d[i + 1];
+    const b = d[i + 2];
+    if (isBg(r, g, b)) {
+      d[i + 3] = 0;
+      continue;
+    }
+    // Soft edge near background color
+    const dd = dist(r, g, b);
+    if (dd < 78) {
+      d[i + 3] = Math.max(0, Math.min(255, Math.round(((dd - 48) / 30) * 255)));
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("Couldn’t encode cutout"))),
+      "image/png"
+    );
+  });
+  return blob;
+}
+
+async function generateCreationBlob(prompt) {
+  const subject = titleFromCreatePrompt(prompt);
+  const url = buildCreateImageUrl(subject);
+  const res = await fetch(url, { mode: "cors" });
+  if (!res.ok) throw new Error(`Create failed (${res.status})`);
+  const raw = await res.blob();
+  const rawUrl = URL.createObjectURL(raw);
+  try {
+    const cut = await cutoutTransparentPng(rawUrl);
+    return { blob: cut, title: subject };
+  } finally {
+    URL.revokeObjectURL(rawUrl);
+  }
+}
+
+async function placeNamedCreation(blob, name) {
+  state.uploadCount += 1;
+  const url = URL.createObjectURL(blob);
+
+  let geo = state.userGeo || state.originGeo;
+  if (!geo) {
+    try {
+      geo = await readGps();
+      state.userGeo = geo;
+      state.originGeo = state.originGeo || geo;
+      startGeoWatch();
+    } catch (err) {
+      console.warn(err);
+      setStatus("Location permission needed to geo-pin creations", 4200);
+      URL.revokeObjectURL(url);
+      throw err;
+    }
+  }
+
+  const position = placementAlongLook(3.2);
+  const aim = aimMetersOnGround(3.2);
+  const pinGeo = offsetLatLng(geo.lat, geo.lng, aim.east, aim.north);
+
+  const node = createNode(
+    {
+      id: `create-${state.uploadCount}`,
+      kind: "image",
+      title: name,
+      blurb: "Within 25 ft · aim from any side",
+      src: url,
+      position,
+      objectUrl: url,
+      deletable: true,
+      lat: pinGeo.lat,
+      lng: pinGeo.lng,
+      inRange: true,
+      worldLocked: true,
+    },
+    state.nodes.length
+  );
+  state.nodes.push(node);
+  updateGeoAnchors();
+  if (state.mapOpen) {
+    refreshMapList();
+    syncLeafletMarkers();
+  }
+  node.thumbUrl = url;
+  setFocus(node);
+  setStatus(`“${name}” created where you’re aiming`);
+  return node;
+}
+
+function closeAddModal() {
+  if (addModal) addModal.hidden = true;
+}
+
+function openAddModal() {
+  if (!addModal) return;
+  if (state.watching || state.naming) return;
+  closeCreateModal();
+  addModal.hidden = false;
+}
+
+function closeCreateModal() {
+  if (!createModal) return;
+  createModal.hidden = true;
+  if (createStatus) {
+    createStatus.hidden = true;
+    createStatus.textContent = "";
+  }
+  if (createSubmit) createSubmit.disabled = false;
+  if (createInput) createInput.disabled = false;
+}
+
+function openCreateModal() {
+  if (!createModal || !createInput) return;
+  closeAddModal();
+  createModal.hidden = false;
+  createInput.value = "";
+  if (createStatus) {
+    createStatus.hidden = true;
+    createStatus.textContent = "";
+  }
+  if (createSubmit) {
+    createSubmit.disabled = false;
+    createSubmit.textContent = "Create here";
+  }
+  createInput.disabled = false;
+  createInput.focus();
+}
+
 async function processNameQueue() {
   if (state.naming) return;
   while (state.nameQueue.length) {
@@ -2480,11 +2787,76 @@ function onPickVideos(event) {
 videoInputGate?.addEventListener("change", onPickVideos);
 videoInputField?.addEventListener("change", onPickVideos);
 
+addBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  openAddModal();
+});
+addCancel?.addEventListener("click", closeAddModal);
+addModal?.addEventListener("click", (e) => {
+  if (e.target === addModal) closeAddModal();
+});
+addUpload?.addEventListener("click", () => {
+  closeAddModal();
+  videoInputField?.click();
+});
+addCreate?.addEventListener("click", () => {
+  openCreateModal();
+});
+createCancel?.addEventListener("click", closeCreateModal);
+createModal?.addEventListener("click", (e) => {
+  if (e.target === createModal) closeCreateModal();
+});
+createForm?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const prompt = createInput?.value?.trim();
+  if (!prompt) return;
+  if (!state.booted || !scene) {
+    setStatus("Open the lens first, then create");
+    return;
+  }
+  if (createSubmit) {
+    createSubmit.disabled = true;
+    createSubmit.textContent = "Creating…";
+  }
+  if (createInput) createInput.disabled = true;
+  if (createStatus) {
+    createStatus.hidden = false;
+    createStatus.textContent = "Generating cutout…";
+  }
+  setStatus("Creating…", 12000);
+  try {
+    const { blob, title } = await generateCreationBlob(prompt);
+    if (createStatus) createStatus.textContent = "Pinning…";
+    await placeNamedCreation(blob, title);
+    closeCreateModal();
+  } catch (err) {
+    console.warn(err);
+    if (createStatus) {
+      createStatus.hidden = false;
+      createStatus.textContent = "Couldn’t create — try again";
+    }
+    setStatus("Couldn’t create that — try another prompt", 4200);
+    if (createSubmit) {
+      createSubmit.disabled = false;
+      createSubmit.textContent = "Create here";
+    }
+    if (createInput) createInput.disabled = false;
+  }
+});
+
 // Desktop keyboard nudge
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (confirmModal && !confirmModal.hidden) {
       closeConfirmModal();
+      return;
+    }
+    if (createModal && !createModal.hidden) {
+      closeCreateModal();
+      return;
+    }
+    if (addModal && !addModal.hidden) {
+      closeAddModal();
       return;
     }
     if (state.watching) {

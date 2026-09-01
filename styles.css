@@ -742,6 +742,74 @@ button {
   background: #000;
 }
 
+.theater-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(72vh, 640px);
+  object-fit: contain;
+  background:
+    linear-gradient(45deg, #1a2a22 25%, transparent 25%),
+    linear-gradient(-45deg, #1a2a22 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1a2a22 75%),
+    linear-gradient(-45deg, transparent 75%, #1a2a22 75%);
+  background-size: 18px 18px;
+  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+  background-color: #0a1410;
+}
+
+.theater-image[hidden],
+.theater-video[hidden] {
+  display: none !important;
+}
+
+.theater-screen-wrap.is-image {
+  border-color: rgba(198, 255, 74, 0.55);
+  background: transparent;
+}
+
+.add-panel {
+  gap: 0.65rem;
+}
+
+.add-option {
+  min-height: 2.85rem;
+  width: 100%;
+  padding: 0 1.1rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(6, 16, 12, 0.55);
+  color: var(--foam);
+  font-weight: 700;
+  text-align: center;
+}
+
+.add-option:active {
+  transform: scale(0.97);
+  background: rgba(238, 247, 240, 0.12);
+}
+
+.add-option-signal {
+  border-color: rgba(198, 255, 74, 0.45);
+  background: var(--signal);
+  color: var(--ink);
+}
+
+.add-option-signal:active {
+  background: var(--signal-deep);
+}
+
+.add-cancel {
+  width: 100%;
+  margin-top: 0.15rem;
+}
+
+.name-submit:disabled,
+.add-option:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 .theater-reticle {
   position: absolute;
   inset: 14%;
