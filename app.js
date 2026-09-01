@@ -3557,25 +3557,26 @@ window.__lumenNodeYs = () =>
       restY: Number((n.restY ?? 0).toFixed(3)),
       baseY: Number(n.baseY.toFixed(3)),
     }));
-window.__lumenPlaceTest = (title) => {
+window.__lumenPlaceTest = (title, side = 0) => {
   const name = String(title || "Dog");
   const flying = isFlyingSubject(name);
   const canvasEl = document.createElement("canvas");
   canvasEl.width = 512;
   canvasEl.height = 640;
   const ctx = canvasEl.getContext("2d");
-  ctx.fillStyle = flying ? "#8ecfff" : "#d4ff6a";
+  ctx.fillStyle = flying ? "#3aa0ff" : "#ff3a1a";
   ctx.beginPath();
   ctx.ellipse(256, 380, 150, 210, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#06100c";
-  ctx.font = "bold 34px sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 42px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(name, 256, 64);
+  ctx.fillText(name, 256, 80);
   const img = new Image();
   img.src = canvasEl.toDataURL();
   const spawnY = flying ? 2.72 : (camera?.position.y ?? 1.4) + 1.05;
   const position = placementAlongLook(3.2, spawnY);
+  position[0] += Number(side) || 0;
   const node = createNode(
     {
       id: `test-${Date.now()}`,
