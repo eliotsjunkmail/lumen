@@ -156,6 +156,8 @@ const _upHeading = new THREE.Vector3();
 const _northQuat = new THREE.Quaternion();
 const _northForward = new THREE.Vector3();
 const _camLocal = new THREE.Vector3();
+const _raycaster = new THREE.Raycaster();
+const _pointerNdc = new THREE.Vector2();
 
 function distanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6378137;
@@ -412,11 +414,10 @@ function updateGeoAnchors() {
     node.group.visible = inRange;
     if (node.radar) node.radar.style.display = inRange ? "" : "none";
 
-    // Keep world-locked pins where they were aimed (camera frame).
-    // Only non-locked geo nodes are repositioned via GPS ENU.
+    // Place relative to the user so scene distance matches GPS range checks.
+    // (Origin-relative ENU left nearby pins stranded far from the camera.)
     if (!node.worldLocked) {
-      const origin = state.originGeo || user;
-      const enu = enuFromOrigin(origin.lat, origin.lng, node.lat, node.lng);
+      const enu = enuFromOrigin(user.lat, user.lng, node.lat, node.lng);
       node.anchorX = enu.x;
       node.anchorZ = enu.z;
     }
@@ -1053,11 +1054,11 @@ function isNodeInView(node) {
   camera.getWorldDirection(_forward);
   _to.copy(node.group.position).sub(camera.position);
   const dist = _to.length();
-  if (dist < 0.35 || dist > 14) return false;
+  if (dist < 0.35 || dist > GEO_RANGE_M + 4) return false;
   _to.normalize();
   const ang = Math.acos(THREE.MathUtils.clamp(_forward.dot(_to), -1, 1));
   // Same aim cone as lock-on — only then count as "in view"
-  return ang <= 0.42;
+  return ang <= 0.48;
 }
 
 function updateRadar() {
@@ -1690,16 +1691,17 @@ function pickCenter() {
   camera.getWorldDirection(_forward);
   let best = null;
   let bestScore = Infinity;
+  const maxDist = GEO_RANGE_M + 4;
 
   for (const node of state.nodes) {
     if (!node.group.visible) continue;
     if (node.lat != null && !node.inRange) continue;
     _to.copy(node.group.position).sub(camera.position);
     const dist = _to.length();
-    if (dist < 0.35 || dist > 14) continue;
+    if (dist < 0.35 || dist > maxDist) continue;
     _to.normalize();
     const ang = Math.acos(THREE.MathUtils.clamp(_forward.dot(_to), -1, 1));
-    if (ang > 0.42) continue;
+    if (ang > 0.48) continue;
     const score = ang * 2.2 + dist * 0.08;
     if (score < bestScore) {
       bestScore = score;
@@ -1724,7 +1726,8 @@ function setFocus(node) {
   } else {
     focusLabel.textContent = "Scan the field";
     hudHint.textContent = "Within 25 ft, aim from any direction";
-    watchBtn.disabled = true;
+    // Keep Watch tappable so we can prompt to aim (disabled buttons eat taps on iOS)
+    watchBtn.disabled = false;
     watchBtn.textContent = "Watch";
     pausePreviews(null);
   }
@@ -1959,10 +1962,15 @@ function enableOrientation() {
 }
 
 function bindLookControls() {
+  let ptrStart = null;
+  let ptrMoved = false;
+
   const onDown = (x, y) => {
     state.dragging = true;
     state.lastX = x;
     state.lastY = y;
+    ptrStart = { x, y, t: performance.now() };
+    ptrMoved = false;
   };
   const onMove = (x, y) => {
     if (!state.dragging || state.watching) return;
@@ -1970,13 +1978,29 @@ function bindLookControls() {
     const dy = y - state.lastY;
     state.lastX = x;
     state.lastY = y;
+    if (ptrStart && Math.hypot(x - ptrStart.x, y - ptrStart.y) > 10) {
+      ptrMoved = true;
+    }
     // Manual offset (desktop free-look, or gyro calibration nudge on phone)
     state.offsetYaw -= dx * 0.005;
     state.offsetPitch -= dy * 0.004;
     state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -1.2, 1.2);
   };
-  const onUp = () => {
+  const onUp = (x, y) => {
     state.dragging = false;
+    if (state.watching || !ptrStart) {
+      ptrStart = null;
+      return;
+    }
+    const dt = performance.now() - ptrStart.t;
+    const dist = Math.hypot(x - ptrStart.x, y - ptrStart.y);
+    const wasTap = !ptrMoved && dist < 14 && dt < 500;
+    ptrStart = null;
+    if (!wasTap) return;
+
+    const node = pickNodeAt(x, y) || pickCenter() || state.focused;
+    if (node) openTheater(node);
+    else setStatus("Aim the brackets at a pin, then tap Watch", 3200);
   };
 
   canvas.addEventListener("pointerdown", (e) => {
@@ -1984,14 +2008,44 @@ function bindLookControls() {
     onDown(e.clientX, e.clientY);
   });
   canvas.addEventListener("pointermove", (e) => onMove(e.clientX, e.clientY));
-  canvas.addEventListener("pointerup", onUp);
-  canvas.addEventListener("pointercancel", onUp);
-
-  canvas.addEventListener("click", () => {
-    if (state.watching) return;
-    const node = pickCenter() || state.focused;
-    if (node) openTheater(node);
+  canvas.addEventListener("pointerup", (e) => onUp(e.clientX, e.clientY));
+  canvas.addEventListener("pointercancel", () => {
+    state.dragging = false;
+    ptrStart = null;
   });
+}
+
+/** Prefer a direct hit on a pin screen/label when the user taps. */
+function pickNodeAt(clientX, clientY) {
+  if (!camera || !renderer || !state.nodes.length) return null;
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  _pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  _pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  _raycaster.setFromCamera(_pointerNdc, camera);
+
+  const hitMeshes = [];
+  for (const node of state.nodes) {
+    if (!node.group?.visible) continue;
+    if (node.lat != null && !node.inRange) continue;
+    if (node.screen) hitMeshes.push(node.screen);
+    if (node.label) hitMeshes.push(node.label);
+    if (node.frame?.visible) hitMeshes.push(node.frame);
+  }
+  if (!hitMeshes.length) return null;
+
+  const hits = _raycaster.intersectObjects(hitMeshes, false);
+  if (!hits.length) return null;
+  const mesh = hits[0].object;
+  return (
+    state.nodes.find(
+      (n) => n.screen === mesh || n.label === mesh || n.frame === mesh
+    ) || null
+  );
+}
+
+function resolveWatchNode() {
+  return state.focused || pickCenter();
 }
 
 function onResize() {
@@ -2220,7 +2274,7 @@ async function syncSharedSpots() {
     return;
   }
 
-  const origin = state.originGeo || state.userGeo;
+  const origin = state.userGeo || state.originGeo;
   let added = 0;
 
   for (const row of rows) {
@@ -2306,7 +2360,11 @@ async function enterField() {
 }
 
 enterBtn.addEventListener("click", enterField);
-watchBtn.addEventListener("click", () => openTheater(state.focused));
+watchBtn.addEventListener("click", () => {
+  const node = resolveWatchNode();
+  if (node) openTheater(node);
+  else setStatus("Aim the brackets at a pin, then tap Watch", 3200);
+});
 theaterClose.addEventListener("click", closeTheaterMode);
 theaterDone?.addEventListener("click", closeTheaterMode);
 theaterVideo.addEventListener("click", () => {
@@ -3051,5 +3109,8 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "ArrowUp") state.offsetPitch += step * 0.7;
   if (e.key === "ArrowDown") state.offsetPitch -= step * 0.7;
   state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -1.2, 1.2);
-  if (e.key === "Enter" && state.focused) openTheater(state.focused);
+  if (e.key === "Enter") {
+    const node = resolveWatchNode();
+    if (node) openTheater(node);
+  }
 });
