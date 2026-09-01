@@ -60,11 +60,16 @@ const addBtn = document.getElementById("add-btn");
 const addModal = document.getElementById("add-modal");
 const addUpload = document.getElementById("add-upload");
 const addCapture = document.getElementById("add-capture");
+const addCreate = document.getElementById("add-create");
 const addCancel = document.getElementById("add-cancel");
+const createModal = document.getElementById("create-modal");
 const createForm = document.getElementById("create-form");
 const createInput = document.getElementById("create-input");
+const createCancel = document.getElementById("create-cancel");
 const createSubmit = document.getElementById("create-submit");
 const createStatus = document.getElementById("create-status");
+const createProgress = document.getElementById("create-progress");
+const createProgressFill = document.getElementById("create-progress-fill");
 const deleteBtn = document.getElementById("delete-btn");
 const theaterDelete = document.getElementById("theater-delete");
 const theaterClose = document.getElementById("theater-close");
@@ -2626,12 +2631,9 @@ function titleFromCreatePrompt(prompt) {
   return t.charAt(0).toUpperCase() + t.slice(1).slice(0, 47);
 }
 
-function buildCreateImageUrl(subject, { seed, frame, frames }) {
+function buildCreateImageUrl(subject) {
   const prompt = [
     subject,
-    `seamless animation frame ${frame} of ${frames}`,
-    "subtle natural motion pose",
-    "same character, same colors, same style",
     "full body",
     "centered",
     "isolated object cutout",
@@ -2641,6 +2643,7 @@ function buildCreateImageUrl(subject, { seed, frame, frames }) {
     "no text",
     "studio product photo",
   ].join(", ");
+  const seed = Math.floor(Math.random() * 1e9);
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(
     prompt
   )}?width=640&height=640&nologo=true&seed=${seed}`;
@@ -2653,6 +2656,22 @@ function loadHtmlImage(src) {
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error("Image failed to load"));
     img.src = src;
+  });
+}
+
+function withTimeout(promise, ms, label = "Timed out") {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(label)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(id);
+        resolve(v);
+      },
+      (err) => {
+        clearTimeout(id);
+        reject(err);
+      }
+    );
   });
 }
 
@@ -2706,57 +2725,90 @@ async function cutoutTransparentPng(sourceUrl) {
     }
   }
   ctx.putImageData(imageData, 0, 0);
-
-  const blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("Couldn’t encode cutout"))),
-      "image/png"
-    );
-  });
-  return blob;
+  return { canvas, img };
 }
 
-async function fetchCutoutFrame(subject, seed, frame, frames) {
-  const url = buildCreateImageUrl(subject, { seed, frame, frames });
-  const res = await fetch(url, { mode: "cors" });
+/** Local flipbook: warp one cutout into a looping idle animation. */
+async function synthesizeAnimFrames(sourceCanvas, frameCount = 6) {
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+  const src = sourceCanvas.getContext("2d").getImageData(0, 0, w, h);
+  const animFrames = [];
+  const animUrls = [];
+
+  for (let f = 0; f < frameCount; f += 1) {
+    const phase = (f / frameCount) * Math.PI * 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    const out = ctx.createImageData(w, h);
+    const amp = Math.max(4, Math.round(w * 0.028));
+
+    for (let y = 0; y < h; y += 1) {
+      const wave =
+        Math.sin((y / h) * Math.PI * 3 + phase) * amp +
+        Math.sin((y / h) * Math.PI + phase * 1.4) * (amp * 0.35);
+      const shift = Math.round(wave);
+      for (let x = 0; x < w; x += 1) {
+        const sx = Math.min(w - 1, Math.max(0, x - shift));
+        const si = (y * w + sx) * 4;
+        const di = (y * w + x) * 4;
+        out.data[di] = src.data[si];
+        out.data[di + 1] = src.data[si + 1];
+        out.data[di + 2] = src.data[si + 2];
+        out.data[di + 3] = src.data[si + 3];
+      }
+    }
+    ctx.putImageData(out, 0, 0);
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error("Couldn’t encode frame"))),
+        "image/png"
+      );
+    });
+    const url = URL.createObjectURL(blob);
+    const img = await loadHtmlImage(url);
+    animFrames.push(img);
+    animUrls.push(url);
+  }
+
+  return { animFrames, animUrls, src: animUrls[0] };
+}
+
+function setCreateProgress(pct, message) {
+  if (createProgress) createProgress.hidden = false;
+  if (createProgressFill) {
+    createProgressFill.style.width = `${Math.max(4, Math.min(100, pct))}%`;
+  }
+  if (createStatus) createStatus.textContent = message || "";
+}
+
+/** One network image + local animation frames (avoids multi-request hangs). */
+async function generateCreationAnim(prompt, onProgress) {
+  const subject = titleFromCreatePrompt(prompt);
+  onProgress?.(8, "Asking for a cutout…");
+
+  const url = buildCreateImageUrl(subject);
+  const res = await withTimeout(
+    fetch(url, { mode: "cors" }),
+    28000,
+    "Create timed out — try again"
+  );
   if (!res.ok) throw new Error(`Create failed (${res.status})`);
-  const raw = await res.blob();
+  onProgress?.(35, "Downloading…");
+  const raw = await withTimeout(res.blob(), 20000, "Download timed out");
   const rawUrl = URL.createObjectURL(raw);
   try {
-    const cut = await cutoutTransparentPng(rawUrl);
-    const cutUrl = URL.createObjectURL(cut);
-    const img = await loadHtmlImage(cutUrl);
-    return { img, url: cutUrl, blob: cut };
+    onProgress?.(55, "Cutting out the background…");
+    const { canvas } = await cutoutTransparentPng(rawUrl);
+    onProgress?.(72, "Animating…");
+    const anim = await synthesizeAnimFrames(canvas, 6);
+    onProgress?.(92, "Pinning…");
+    return { title: subject, ...anim };
   } finally {
     URL.revokeObjectURL(rawUrl);
   }
-}
-
-/** Build a short looping flipbook of transparent cutouts. */
-async function generateCreationAnim(prompt, onProgress) {
-  const subject = titleFromCreatePrompt(prompt);
-  const frames = 4;
-  const seed = Math.floor(Math.random() * 1e9);
-  onProgress?.(0, frames);
-
-  let done = 0;
-  const results = await Promise.all(
-    Array.from({ length: frames }, (_, i) =>
-      fetchCutoutFrame(subject, seed, i + 1, frames).then((r) => {
-        done += 1;
-        onProgress?.(done, frames);
-        return r;
-      })
-    )
-  );
-
-  return {
-    title: subject,
-    animFrames: results.map((r) => r.img),
-    animUrls: results.map((r) => r.url),
-    src: results[0].url,
-    thumbBlob: results[0].blob,
-  };
 }
 
 async function placeNamedCreation(creation) {
@@ -2813,32 +2865,48 @@ async function placeNamedCreation(creation) {
 
 function closeAddModal() {
   if (addModal) addModal.hidden = true;
-  if (createStatus) {
-    createStatus.hidden = true;
-    createStatus.textContent = "";
-  }
-  if (createSubmit) {
-    createSubmit.disabled = false;
-    createSubmit.textContent = "Create here";
-  }
-  if (createInput) createInput.disabled = false;
 }
 
 function openAddModal() {
   if (!addModal) return;
   if (state.watching || state.naming) return;
-  if (createInput) createInput.value = "";
-  if (createStatus) {
-    createStatus.hidden = true;
-    createStatus.textContent = "";
-  }
+  closeCreateModal(true);
+  addModal.hidden = false;
+}
+
+function closeCreateModal(silent = false) {
+  if (!createModal) return;
+  createModal.hidden = true;
+  if (createProgress) createProgress.hidden = true;
+  if (createProgressFill) createProgressFill.style.width = "8%";
+  if (createStatus) createStatus.textContent = "";
   if (createSubmit) {
     createSubmit.disabled = false;
     createSubmit.textContent = "Create here";
   }
   if (createInput) createInput.disabled = false;
-  addModal.hidden = false;
-  createInput?.focus();
+  if (createCancel) createCancel.disabled = false;
+  if (!silent && createInput) createInput.value = "";
+}
+
+function openCreateModal() {
+  if (!createModal) return;
+  closeAddModal();
+  if (createProgress) createProgress.hidden = true;
+  if (createProgressFill) createProgressFill.style.width = "8%";
+  if (createStatus) createStatus.textContent = "";
+  if (createSubmit) {
+    createSubmit.disabled = false;
+    createSubmit.textContent = "Create here";
+  }
+  if (createInput) {
+    createInput.disabled = false;
+    createInput.value = createInput.value || "";
+  }
+  if (createCancel) createCancel.disabled = false;
+  createModal.hidden = false;
+  // Focus after paint so iOS shows the keyboard
+  requestAnimationFrame(() => createInput?.focus());
 }
 
 async function processNameQueue() {
@@ -2901,6 +2969,9 @@ addCancel?.addEventListener("click", closeAddModal);
 addModal?.addEventListener("click", (e) => {
   if (e.target === addModal) closeAddModal();
 });
+addCreate?.addEventListener("click", () => {
+  openCreateModal();
+});
 addCapture?.addEventListener("click", () => {
   closeAddModal();
   videoInputCapture?.click();
@@ -2909,6 +2980,10 @@ addUpload?.addEventListener("click", () => {
   closeAddModal();
   // Library / Files / Drive — not the camera
   videoInputField?.click();
+});
+createCancel?.addEventListener("click", () => closeCreateModal());
+createModal?.addEventListener("click", (e) => {
+  if (e.target === createModal) closeCreateModal();
 });
 createForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -2926,38 +3001,28 @@ createForm?.addEventListener("submit", async (e) => {
     createSubmit.textContent = "Creating…";
   }
   if (createInput) createInput.disabled = true;
-  if (addUpload) addUpload.disabled = true;
-  if (addCapture) addCapture.disabled = true;
-  if (createStatus) {
-    createStatus.hidden = false;
-    createStatus.textContent = "Generating animation…";
-  }
-  setStatus("Creating animated cutout…", 20000);
+  if (createCancel) createCancel.disabled = true;
+  setCreateProgress(6, "Starting…");
+  setStatus("Creating…", 20000);
   try {
-    const creation = await generateCreationAnim(prompt, (i, n) => {
-      if (createStatus) {
-        createStatus.textContent = `Animating frame ${i} of ${n}…`;
-      }
-      setStatus(`Animating frame ${i} of ${n}…`, 20000);
+    const creation = await generateCreationAnim(prompt, (pct, msg) => {
+      setCreateProgress(pct, msg);
+      if (msg) setStatus(msg, 20000);
     });
-    if (createStatus) createStatus.textContent = "Pinning…";
+    setCreateProgress(96, "Pinning…");
     await placeNamedCreation(creation);
-    closeAddModal();
+    setCreateProgress(100, "Done");
+    closeCreateModal();
   } catch (err) {
     console.warn(err);
-    if (createStatus) {
-      createStatus.hidden = false;
-      createStatus.textContent = "Couldn’t create — try again";
-    }
-    setStatus("Couldn’t create that — try another prompt", 4200);
+    setCreateProgress(100, err?.message || "Couldn’t create — try again");
+    setStatus(err?.message || "Couldn’t create that — try again", 4200);
     if (createSubmit) {
       createSubmit.disabled = false;
       createSubmit.textContent = "Create here";
     }
     if (createInput) createInput.disabled = false;
-  } finally {
-    if (addUpload) addUpload.disabled = false;
-    if (addCapture) addCapture.disabled = false;
+    if (createCancel) createCancel.disabled = false;
   }
 });
 
@@ -2966,6 +3031,10 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (confirmModal && !confirmModal.hidden) {
       closeConfirmModal();
+      return;
+    }
+    if (createModal && !createModal.hidden) {
+      closeCreateModal();
       return;
     }
     if (addModal && !addModal.hidden) {

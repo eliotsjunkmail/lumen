@@ -772,14 +772,37 @@ button {
   gap: 0.65rem;
 }
 
-.add-create-block {
-  display: grid;
-  gap: 0.55rem;
-  margin: 0;
+.create-panel {
+  gap: 0.75rem;
 }
 
-.add-create-submit {
-  width: 100%;
+.create-actions {
+  margin-top: 0.15rem;
+}
+
+.create-progress {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.create-progress[hidden] {
+  display: none !important;
+}
+
+.create-progress-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(238, 247, 240, 0.12);
+  overflow: hidden;
+}
+
+.create-progress-fill {
+  display: block;
+  height: 100%;
+  width: 8%;
+  border-radius: inherit;
+  background: var(--signal);
+  transition: width 0.25s ease;
 }
 
 .add-divider {

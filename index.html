@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=46" />
+    <link rel="stylesheet" href="styles.css?v=47" />
   </head>
   <body>
     <div id="app">
@@ -227,26 +227,9 @@
           <p class="name-brand">Lumen</p>
           <h2 class="name-title" id="add-title">Add</h2>
 
-          <form id="create-form" class="add-create-block">
-            <p class="name-file">Create an animated cutout where you’re aiming</p>
-            <input
-              id="create-input"
-              class="name-input"
-              type="text"
-              maxlength="120"
-              placeholder='e.g. create a snake'
-              autocomplete="off"
-              autocapitalize="sentences"
-              enterkeyhint="go"
-            />
-            <button type="submit" id="create-submit" class="cta name-submit add-create-submit">
-              Create here
-            </button>
-            <p class="name-hint" id="create-status" hidden></p>
-          </form>
-
-          <div class="add-divider" aria-hidden="true"><span>or</span></div>
-
+          <button type="button" id="add-create" class="add-option add-option-signal">
+            Create
+          </button>
           <button type="button" id="add-capture" class="add-option add-option-signal">
             Take Video
           </button>
@@ -261,6 +244,37 @@
             Cancel
           </button>
         </div>
+      </div>
+
+      <div id="create-modal" class="name-modal" hidden>
+        <form id="create-form" class="name-panel create-panel" role="dialog" aria-modal="true" aria-labelledby="create-title">
+          <p class="name-brand">Lumen</p>
+          <h2 class="name-title" id="create-title">Create</h2>
+          <p class="name-file">Describe what to place where you’re aiming — animated cutout.</p>
+          <input
+            id="create-input"
+            class="name-input"
+            type="text"
+            maxlength="120"
+            placeholder='e.g. create a snake'
+            required
+            autocomplete="off"
+            autocapitalize="sentences"
+            enterkeyhint="go"
+          />
+          <div class="name-actions create-actions">
+            <button type="button" id="create-cancel" class="ghost-btn">Cancel</button>
+            <button type="submit" id="create-submit" class="cta name-submit">
+              Create here
+            </button>
+          </div>
+          <div id="create-progress" class="create-progress" hidden>
+            <div class="create-progress-bar" aria-hidden="true">
+              <span id="create-progress-fill" class="create-progress-fill"></span>
+            </div>
+            <p class="name-hint" id="create-status"></p>
+          </div>
+        </form>
       </div>
 
       <div id="map-modal" class="map-modal" hidden>
@@ -303,6 +317,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=46"></script>
+    <script type="module" src="app.js?v=47"></script>
   </body>
 </html>
