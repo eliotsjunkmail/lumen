@@ -2450,6 +2450,10 @@ function scatterDandelion(strength = 1) {
 
   const look = getLookForward();
   const amp = THREE.MathUtils.clamp(strength, 0.55, 2.4);
+  const right = new THREE.Vector3().crossVectors(look, _worldUp);
+  if (right.lengthSq() < 0.0001) right.set(1, 0, 0);
+  else right.normalize();
+  const up = new THREE.Vector3().crossVectors(right, look).normalize();
 
   d.group.updateMatrixWorld(true);
   const headWorld = new THREE.Vector3();
@@ -2464,17 +2468,14 @@ function scatterDandelion(strength = 1) {
     scene.add(seed.sprite);
     scene.add(seed.kernel);
     seed.sprite.position.copy(world);
-    seed.kernel.position.copy(world).addScaledVector(seed.local, -0.08);
+    seed.kernel.position.copy(world);
 
-    const jitter = new THREE.Vector3(
-      (Math.random() - 0.5) * 1.15,
-      Math.random() * 0.55,
-      (Math.random() - 0.5) * 1.15
-    );
-    const radial = seed.local.clone().normalize().multiplyScalar(0.55 + Math.random() * 0.9);
-    seed.vx = look.x * (2.4 + Math.random() * 2.2) * amp + jitter.x + radial.x;
-    seed.vy = look.y * (1.4 + Math.random() * 1.1) * amp + 0.55 + jitter.y + radial.y * 0.35;
-    seed.vz = look.z * (2.4 + Math.random() * 2.2) * amp + jitter.z + radial.z;
+    const forwardSpeed = (2.8 + Math.random() * 2.6) * amp;
+    const side = (Math.random() - 0.5) * 2.8 * amp;
+    const lift = (0.35 + Math.random() * 1.4) * amp;
+    seed.vx = look.x * forwardSpeed + right.x * side + up.x * lift;
+    seed.vy = look.y * forwardSpeed + right.y * side + up.y * lift + 0.45;
+    seed.vz = look.z * forwardSpeed + right.z * side + up.z * lift;
     seed.scattered = true;
     seed.life = 0;
   }
@@ -3557,7 +3558,7 @@ window.__lumenNodeYs = () =>
       restY: Number((n.restY ?? 0).toFixed(3)),
       baseY: Number(n.baseY.toFixed(3)),
     }));
-window.__lumenPlaceTest = (title, side = 0) => {
+window.__lumenPlaceTest = async (title, side = 0) => {
   const name = String(title || "Dog");
   const flying = isFlyingSubject(name);
   const canvasEl = document.createElement("canvas");
@@ -3574,6 +3575,12 @@ window.__lumenPlaceTest = (title, side = 0) => {
   ctx.fillText(name, 256, 80);
   const img = new Image();
   img.src = canvasEl.toDataURL();
+  if (!img.complete) {
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+  }
   const spawnY = flying ? 2.72 : (camera?.position.y ?? 1.4) + 1.05;
   const position = placementAlongLook(3.2, spawnY);
   position[0] += Number(side) || 0;
