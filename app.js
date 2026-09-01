@@ -55,9 +55,11 @@ const theaterScreenWrap = document.querySelector(".theater-screen-wrap");
 const uploadNote = document.getElementById("upload-note");
 const videoInputGate = document.getElementById("video-input-gate");
 const videoInputField = document.getElementById("video-input-field");
+const videoInputCapture = document.getElementById("video-input-capture");
 const addBtn = document.getElementById("add-btn");
 const addModal = document.getElementById("add-modal");
 const addUpload = document.getElementById("add-upload");
+const addCapture = document.getElementById("add-capture");
 const addCancel = document.getElementById("add-cancel");
 const createForm = document.getElementById("create-form");
 const createInput = document.getElementById("create-input");
@@ -2889,6 +2891,7 @@ function onPickVideos(event) {
 
 videoInputGate?.addEventListener("change", onPickVideos);
 videoInputField?.addEventListener("change", onPickVideos);
+videoInputCapture?.addEventListener("change", onPickVideos);
 
 addBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -2898,9 +2901,13 @@ addCancel?.addEventListener("click", closeAddModal);
 addModal?.addEventListener("click", (e) => {
   if (e.target === addModal) closeAddModal();
 });
+addCapture?.addEventListener("click", () => {
+  closeAddModal();
+  videoInputCapture?.click();
+});
 addUpload?.addEventListener("click", () => {
   closeAddModal();
-  // Native sheet: Take Video / Photo Library / Files / Drive, etc.
+  // Library / Files / Drive — not the camera
   videoInputField?.click();
 });
 createForm?.addEventListener("submit", async (e) => {
@@ -2920,6 +2927,7 @@ createForm?.addEventListener("submit", async (e) => {
   }
   if (createInput) createInput.disabled = true;
   if (addUpload) addUpload.disabled = true;
+  if (addCapture) addCapture.disabled = true;
   if (createStatus) {
     createStatus.hidden = false;
     createStatus.textContent = "Generating animation…";
@@ -2949,6 +2957,7 @@ createForm?.addEventListener("submit", async (e) => {
     if (createInput) createInput.disabled = false;
   } finally {
     if (addUpload) addUpload.disabled = false;
+    if (addCapture) addCapture.disabled = false;
   }
 });
 

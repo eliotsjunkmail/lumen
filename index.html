@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=45" />
+    <link rel="stylesheet" href="styles.css?v=46" />
   </head>
   <body>
     <div id="app">
@@ -121,6 +121,14 @@
               type="file"
               accept="video/*"
               multiple
+              hidden
+            />
+            <input
+              id="video-input-capture"
+              class="file-input"
+              type="file"
+              accept="video/*"
+              capture="environment"
               hidden
             />
             <button type="button" id="watch-btn" class="watch-btn" disabled>
@@ -237,13 +245,16 @@
             <p class="name-hint" id="create-status" hidden></p>
           </form>
 
-          <div class="add-divider" aria-hidden="true"><span>or upload</span></div>
+          <div class="add-divider" aria-hidden="true"><span>or</span></div>
 
+          <button type="button" id="add-capture" class="add-option add-option-signal">
+            Take Video
+          </button>
           <button type="button" id="add-upload" class="add-option">
             Upload video
           </button>
           <p class="add-upload-hint">
-            Opens Take Video, Photo Library, Files, Drive, and other sources on your phone.
+            Upload opens Photo Library, Files, Drive, and other sources.
           </p>
 
           <button type="button" id="add-cancel" class="ghost-btn add-cancel">
@@ -292,6 +303,6 @@
         }
       }
     </script>
-    <script type="module" src="app.js?v=45"></script>
+    <script type="module" src="app.js?v=46"></script>
   </body>
 </html>
