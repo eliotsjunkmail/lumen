@@ -3546,6 +3546,17 @@ window.addEventListener("keydown", (e) => {
 
 window.__lumenScatterDandelion = (strength) => scatterDandelion(Number(strength) || 1.1);
 window.__lumenIsFlyingSubject = isFlyingSubject;
+window.__lumenNodeYs = () =>
+  state.nodes
+    .filter((n) => n.kind === "image")
+    .map((n) => ({
+      title: n.title,
+      flying: n.flying,
+      settled: n.settled,
+      y: Number(n.group.position.y.toFixed(3)),
+      restY: Number((n.restY ?? 0).toFixed(3)),
+      baseY: Number(n.baseY.toFixed(3)),
+    }));
 window.__lumenPlaceTest = (title) => {
   const name = String(title || "Dog");
   const flying = isFlyingSubject(name);
