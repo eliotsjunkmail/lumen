@@ -58,10 +58,9 @@ const videoInputField = document.getElementById("video-input-field");
 const videoInputCapture = document.getElementById("video-input-capture");
 const addBtn = document.getElementById("add-btn");
 const addModal = document.getElementById("add-modal");
-const addUpload = document.getElementById("add-upload");
 const addCapture = document.getElementById("add-capture");
 const addCreate = document.getElementById("add-create");
-const addCancel = document.getElementById("add-cancel");
+const addClose = document.getElementById("add-close");
 const createModal = document.getElementById("create-modal");
 const createForm = document.getElementById("create-form");
 const createInput = document.getElementById("create-input");
@@ -2965,7 +2964,7 @@ addBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
   openAddModal();
 });
-addCancel?.addEventListener("click", closeAddModal);
+addClose?.addEventListener("click", closeAddModal);
 addModal?.addEventListener("click", (e) => {
   if (e.target === addModal) closeAddModal();
 });
@@ -2975,11 +2974,6 @@ addCreate?.addEventListener("click", () => {
 addCapture?.addEventListener("click", () => {
   closeAddModal();
   videoInputCapture?.click();
-});
-addUpload?.addEventListener("click", () => {
-  closeAddModal();
-  // Library / Files / Drive — not the camera
-  videoInputField?.click();
 });
 createCancel?.addEventListener("click", () => closeCreateModal());
 createModal?.addEventListener("click", (e) => {
