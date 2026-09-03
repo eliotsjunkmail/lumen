@@ -58,6 +58,9 @@ const videoInputGate = document.getElementById("video-input-gate");
 const videoInputField = document.getElementById("video-input-field");
 const videoInputCapture = document.getElementById("video-input-capture");
 const addBtn = document.getElementById("add-btn");
+const uploadOverlay = document.getElementById("upload-overlay");
+const uploadOverlayTitle = document.getElementById("upload-overlay-title");
+const uploadOverlayCopy = document.getElementById("upload-overlay-copy");
 const addModal = document.getElementById("add-modal");
 const addCapture = document.getElementById("add-capture");
 const addAlbum = document.getElementById("add-album");
@@ -472,6 +475,18 @@ function setStatus(message, ms = 2800) {
   statusEl.classList.add("is-on");
   clearTimeout(statusTimer);
   statusTimer = setTimeout(() => statusEl.classList.remove("is-on"), ms);
+}
+
+function showUploadOverlay(title, copy) {
+  if (uploadOverlayTitle) uploadOverlayTitle.textContent = title || "Uploading";
+  if (uploadOverlayCopy) uploadOverlayCopy.textContent = copy || "Sending your video…";
+  if (uploadOverlay) uploadOverlay.hidden = false;
+  if (addBtn) addBtn.disabled = true;
+}
+
+function hideUploadOverlay() {
+  if (uploadOverlay) uploadOverlay.hidden = true;
+  if (addBtn) addBtn.disabled = false;
 }
 
 function createLabelTexture(title, blurb, { reserveDelete = false, thumbs = 0, kind = "video" } = {}) {
@@ -2779,26 +2794,25 @@ async function placeNamedVideo(file, name, opts = {}) {
     })
     .catch(() => {});
 
-  // Publish in the background so anyone, on any browser, can load this pin
+  // Wait for the cloud publish so the spinner stays up until the file is sent
   if (cloudConfigured()) {
-    setStatus(`Publishing “${name}”…`, 6000);
-    publishSpot(file, {
-      title: name,
-      lat: pinGeo.lat,
-      lng: pinGeo.lng,
-      owner: getDeviceId(),
-      takenAt,
-    })
-      .then((res) => {
-        node.cloudId = res.id;
-        node.storagePath = res.path;
-        node.deleteToken = res.deleteToken;
-        setStatus(`“${name}” shared — anyone here can watch it`);
-      })
-      .catch((err) => {
-        console.warn(err);
-        setStatus("Couldn’t publish — clip stays on this phone", 4200);
+    showUploadOverlay("Uploading", `Sending “${name}”…`);
+    try {
+      const res = await publishSpot(file, {
+        title: name,
+        lat: pinGeo.lat,
+        lng: pinGeo.lng,
+        owner: getDeviceId(),
+        takenAt,
       });
+      node.cloudId = res.id;
+      node.storagePath = res.path;
+      node.deleteToken = res.deleteToken;
+      setStatus(`“${name}” shared — anyone here can watch it`);
+    } catch (err) {
+      console.warn(err);
+      setStatus("Couldn’t publish — clip stays on this phone", 4200);
+    }
   }
 
   return node;
@@ -3157,15 +3171,20 @@ function openCreateModal() {
 
 async function processNameQueue() {
   if (state.naming) return;
+  const total = state.nameQueue.length;
+  let index = 0;
   while (state.nameQueue.length) {
     if (!state.booted || !scene) break;
     const item = state.nameQueue.shift();
     const file = item?.file || item;
     if (!file) continue;
+    index += 1;
     const source = item?.source || "album";
+    const batch =
+      total > 1 ? ` (${index} of ${total})` : "";
     let meta = item?.meta || { lat: null, lng: null, takenAt: null };
     if (source === "album" && !item?.meta) {
-      setStatus("Reading where this was filmed…", 5000);
+      showUploadOverlay("Reading video", `Finding where it was filmed${batch}…`);
       meta = await readVideoCaptureMeta(file);
     }
     if (!meta.takenAt) {
@@ -3173,8 +3192,10 @@ async function processNameQueue() {
         ? new Date(file.lastModified).toISOString()
         : new Date().toISOString();
     }
+    hideUploadOverlay();
     const name = await openNameModal(file, meta, source);
     if (!name) continue;
+    showUploadOverlay("Uploading", `Sending “${name}”${batch}…`);
     try {
       await placeNamedVideo(file, name, {
         lat: meta.lat,
@@ -3184,8 +3205,11 @@ async function processNameQueue() {
       });
     } catch (err) {
       console.error(err);
+    } finally {
+      hideUploadOverlay();
     }
   }
+  hideUploadOverlay();
   updateUploadNote(state.nameQueue.length + state.pendingUploads.length);
 }
 
@@ -3217,6 +3241,10 @@ function addUploadedFiles(fileList, source = "album") {
     return files.length;
   }
 
+  showUploadOverlay(
+    "Uploading",
+    files.length === 1 ? "Opening your video…" : `Preparing ${files.length} videos…`
+  );
   state.nameQueue.push(...items);
   processNameQueue();
   return files.length;
@@ -3300,6 +3328,7 @@ createForm?.addEventListener("submit", async (e) => {
 // Desktop keyboard nudge
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
+    if (uploadOverlay && !uploadOverlay.hidden) return;
     if (confirmModal && !confirmModal.hidden) {
       closeConfirmModal();
       return;

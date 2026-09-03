@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=55" />
+    <link rel="stylesheet" href="styles.css?v=56" />
   </head>
   <body>
     <div id="app">
@@ -222,6 +222,14 @@
         </form>
       </div>
 
+      <div id="upload-overlay" class="upload-overlay" hidden>
+        <div class="upload-overlay-panel" role="status" aria-live="polite" aria-busy="true">
+          <div class="upload-spinner" aria-hidden="true"></div>
+          <p class="upload-overlay-title" id="upload-overlay-title">Uploading</p>
+          <p class="upload-overlay-copy" id="upload-overlay-copy">Sending your video…</p>
+        </div>
+      </div>
+
       <div id="add-modal" class="name-modal" hidden>
         <div class="name-panel add-panel" role="dialog" aria-modal="true" aria-label="Add">
           <button
@@ -318,6 +326,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=55"></script>
+    <script type="module" src="app.js?v=56"></script>
   </body>
 </html>

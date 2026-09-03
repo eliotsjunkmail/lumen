@@ -332,6 +332,11 @@ button {
   transform: scale(0.96);
 }
 
+.upload-btn:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
 .watch-btn {
   flex: 0 0 auto;
   min-height: 2.6rem;
@@ -1025,6 +1030,64 @@ button {
 
 .name-modal[hidden] {
   display: none !important;
+}
+
+.upload-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  display: grid;
+  place-items: center;
+  padding: calc(18px + var(--safe-top)) 16px calc(24px + var(--safe-bottom));
+  background: rgba(2, 8, 5, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.upload-overlay[hidden] {
+  display: none !important;
+}
+
+.upload-overlay-panel {
+  width: min(100%, 280px);
+  display: grid;
+  justify-items: center;
+  gap: 0.7rem;
+  padding: 1.4rem 1.2rem 1.35rem;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--glass-strong);
+  text-align: center;
+}
+
+.upload-spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid rgba(198, 255, 74, 0.18);
+  border-top-color: var(--signal);
+  animation: upload-spin 0.7s linear infinite;
+}
+
+.upload-overlay-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+  color: var(--foam);
+}
+
+.upload-overlay-copy {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(238, 247, 240, 0.68);
+}
+
+@keyframes upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .name-panel {
