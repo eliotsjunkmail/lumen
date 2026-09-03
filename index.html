@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=54" />
+    <link rel="stylesheet" href="styles.css?v=55" />
   </head>
   <body>
     <div id="app">
@@ -214,9 +214,9 @@
           />
           <div class="name-actions">
             <button type="button" id="name-cancel" class="ghost-btn">Cancel</button>
-            <button type="submit" class="cta name-submit">Pin here</button>
+            <button type="submit" id="name-submit" class="cta name-submit">Pin here</button>
           </div>
-          <p class="name-hint">
+          <p class="name-hint" id="name-hint">
             Visible when you’re within 25 feet and aim at it from any direction.
           </p>
         </form>
@@ -239,6 +239,9 @@
           </button>
           <button type="button" id="add-capture" class="add-option add-option-signal">
             Take Video
+          </button>
+          <button type="button" id="add-album" class="add-option add-option-signal">
+            Upload from photo album
           </button>
         </div>
       </div>
@@ -315,6 +318,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=54"></script>
+    <script type="module" src="app.js?v=55"></script>
   </body>
 </html>

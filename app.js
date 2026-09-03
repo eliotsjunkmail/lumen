@@ -7,6 +7,7 @@ import {
   videoUrl,
   thumbUrl,
 } from "./cloud.js";
+import { readVideoCaptureMeta, formatTakenLabel } from "./video-meta.js";
 
 const GEO_RANGE_FT = 25;
 const GEO_RANGE_M = GEO_RANGE_FT * 0.3048;
@@ -59,6 +60,7 @@ const videoInputCapture = document.getElementById("video-input-capture");
 const addBtn = document.getElementById("add-btn");
 const addModal = document.getElementById("add-modal");
 const addCapture = document.getElementById("add-capture");
+const addAlbum = document.getElementById("add-album");
 const addCreate = document.getElementById("add-create");
 const addClose = document.getElementById("add-close");
 const createModal = document.getElementById("create-modal");
@@ -82,6 +84,8 @@ const nameModal = document.getElementById("name-modal");
 const nameForm = document.getElementById("name-form");
 const nameInput = document.getElementById("name-input");
 const nameFile = document.getElementById("name-file");
+const nameHint = document.getElementById("name-hint");
+const nameSubmit = document.getElementById("name-submit");
 const nameCancel = document.getElementById("name-cancel");
 const locationPrompt = document.getElementById("location-prompt");
 const locationCopy = document.getElementById("location-copy");
@@ -451,8 +455,11 @@ function updateGeoAnchors() {
     }
 
     const feet = Math.max(1, Math.round(dist * 3.28084));
+    const taken = formatTakenLabel(node.takenAt);
     node.blurb = inRange
-      ? `${feet} ft · aim from any side`
+      ? taken
+        ? `${feet} ft · ${taken}`
+        : `${feet} ft · aim from any side`
       : `Out of range (${feet} ft)`;
     if (state.focused === node) hudHint.textContent = node.blurb;
 
@@ -1570,7 +1577,12 @@ function refreshMapList() {
 
     const place =
       node.lat != null && node.lng != null ? lookupPlace(node.lat, node.lng) : null;
-    const meta = [node.deletable ? "Your pin" : null, place]
+    const taken = formatTakenLabel(node.takenAt);
+    const meta = [
+      node.deletable ? "Your pin" : null,
+      taken ? `taken ${taken}` : null,
+      place,
+    ]
       .filter(Boolean)
       .join(" · ");
     if (row.meta.textContent !== meta) row.meta.textContent = meta;
@@ -1805,9 +1817,11 @@ function openTheater(node, opts = {}) {
   pausePreviews(null);
   field.classList.add("is-watching");
   theater.hidden = false;
-  theaterTitle.textContent = node.thumbs
+  const takenTitle = formatTakenLabel(node.takenAt);
+  const baseTitle = node.thumbs
     ? `${node.title} 👍${node.thumbs > 1 ? node.thumbs : ""}`
     : node.title;
+  theaterTitle.textContent = takenTitle ? `${baseTitle} · ${takenTitle}` : baseTitle;
   theaterDelete.hidden = !node.deletable;
 
   const isImage = node.kind === "image";
@@ -2362,6 +2376,7 @@ async function syncSharedSpots() {
         deletable: isOwner,
         lat: row.lat,
         lng: row.lng,
+        takenAt: row.takenAt || null,
         inRange: false,
         cloudId: row.id,
         storagePath: row.video_path,
@@ -2588,8 +2603,14 @@ async function suggestVideoName(file) {
   return titleCase(label).slice(0, 40);
 }
 
-function fallbackName() {
-  const time = new Date().toLocaleTimeString([], {
+function fallbackName(takenAt) {
+  const d = takenAt ? new Date(takenAt) : new Date();
+  if (Number.isNaN(d.getTime())) return fallbackName();
+  if (takenAt) {
+    const date = d.toLocaleDateString([], { month: "short", day: "numeric" });
+    return `Clip ${date}`;
+  }
+  const time = d.toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -2606,11 +2627,27 @@ function focusNameInput() {
   }
 }
 
-function openNameModal(file) {
+function openNameModal(file, meta = {}, source = "capture") {
   return new Promise((resolve) => {
     state.naming = true;
-    nameFile.textContent = file.name || "Video";
-    nameInput.value = fallbackName();
+    const takenLabel = formatTakenLabel(meta.takenAt);
+    nameFile.textContent = takenLabel
+      ? `${file.name || "Video"} · ${takenLabel}`
+      : file.name || "Video";
+    nameInput.value = fallbackName(meta.takenAt);
+    const hasGps = Number.isFinite(meta.lat) && Number.isFinite(meta.lng);
+    if (nameHint) {
+      nameHint.textContent =
+        source === "album" && hasGps
+          ? "Pinned at the place and date stored on this video."
+          : source === "album"
+            ? "No location on this video — it will pin where you are now."
+            : "Visible when you’re within 25 feet and aim at it from any direction.";
+    }
+    if (nameSubmit) {
+      nameSubmit.textContent =
+        source === "album" && hasGps ? "Pin where filmed" : "Pin here";
+    }
     nameModal.hidden = false;
     // Focus synchronously — iOS only shows the keyboard inside a user gesture
     focusNameInput();
@@ -2657,9 +2694,14 @@ function openNameModal(file) {
   });
 }
 
-async function placeNamedVideo(file, name) {
+async function placeNamedVideo(file, name, opts = {}) {
   state.uploadCount += 1;
   const url = URL.createObjectURL(file);
+  const takenAt = opts.takenAt || new Date().toISOString();
+  const recordedGps =
+    Number.isFinite(opts.lat) && Number.isFinite(opts.lng)
+      ? { lat: opts.lat, lng: opts.lng }
+      : null;
 
   let geo = state.userGeo || state.originGeo;
   if (!geo) {
@@ -2676,25 +2718,42 @@ async function placeNamedVideo(file, name) {
     }
   }
 
-  // Place in the direction the phone is aimed right now (visual world lock).
-  // GPS stores the pin's ground location for range checks and the field map.
-  const position = placementAlongLook(3.2);
-  const aim = aimMetersOnGround(3.2);
-  const pinGeo = offsetLatLng(geo.lat, geo.lng, aim.east, aim.north);
+  let position;
+  let pinGeo;
+  let worldLocked;
+  if (recordedGps) {
+    // Album clips stay at the filmed GPS as the user walks.
+    pinGeo = recordedGps;
+    worldLocked = false;
+    const enu = enuFromOrigin(geo.lat, geo.lng, pinGeo.lat, pinGeo.lng);
+    position = [enu.x, 1.4, enu.z];
+  } else {
+    // Place in the direction the phone is aimed right now (visual world lock).
+    // GPS stores the pin's ground location for range checks and the field map.
+    position = placementAlongLook(3.2);
+    const aim = aimMetersOnGround(3.2);
+    pinGeo = offsetLatLng(geo.lat, geo.lng, aim.east, aim.north);
+    worldLocked = true;
+  }
 
+  const takenLabel = formatTakenLabel(takenAt);
   const node = createNode(
     {
       id: `upload-${state.uploadCount}`,
       title: name,
-      blurb: "Within 25 ft · aim from any side",
+      blurb: takenLabel
+        ? `Within 25 ft · ${takenLabel}`
+        : "Within 25 ft · aim from any side",
       src: url,
       position,
       objectUrl: url,
       deletable: true,
       lat: pinGeo.lat,
       lng: pinGeo.lng,
+      takenAt,
+      fromAlbum: Boolean(opts.fromAlbum),
       inRange: true,
-      worldLocked: true,
+      worldLocked,
     },
     state.nodes.length
   );
@@ -2704,7 +2763,13 @@ async function placeNamedVideo(file, name) {
     refreshMapList();
     syncLeafletMarkers();
   }
-  setStatus(`“${name}” pinned where you’re aiming`);
+  if (recordedGps) {
+    setStatus(`“${name}” pinned where it was filmed`);
+  } else if (opts.fromAlbum) {
+    setStatus(`“${name}” has no location — pinned where you are`);
+  } else {
+    setStatus(`“${name}” pinned where you’re aiming`);
+  }
 
   // Map-list thumbnail for this fresh upload (shared pins get Cloudinary's)
   grabVideoFrame(file)
@@ -2722,6 +2787,7 @@ async function placeNamedVideo(file, name) {
       lat: pinGeo.lat,
       lng: pinGeo.lng,
       owner: getDeviceId(),
+      takenAt,
     })
       .then((res) => {
         node.cloudId = res.id;
@@ -3093,11 +3159,29 @@ async function processNameQueue() {
   if (state.naming) return;
   while (state.nameQueue.length) {
     if (!state.booted || !scene) break;
-    const file = state.nameQueue.shift();
-    const name = await openNameModal(file);
+    const item = state.nameQueue.shift();
+    const file = item?.file || item;
+    if (!file) continue;
+    const source = item?.source || "album";
+    let meta = item?.meta || { lat: null, lng: null, takenAt: null };
+    if (source === "album" && !item?.meta) {
+      setStatus("Reading where this was filmed…", 5000);
+      meta = await readVideoCaptureMeta(file);
+    }
+    if (!meta.takenAt) {
+      meta.takenAt = file.lastModified
+        ? new Date(file.lastModified).toISOString()
+        : new Date().toISOString();
+    }
+    const name = await openNameModal(file, meta, source);
     if (!name) continue;
     try {
-      await placeNamedVideo(file, name);
+      await placeNamedVideo(file, name, {
+        lat: meta.lat,
+        lng: meta.lng,
+        takenAt: meta.takenAt,
+        fromAlbum: source === "album",
+      });
     } catch (err) {
       console.error(err);
     }
@@ -3105,18 +3189,25 @@ async function processNameQueue() {
   updateUploadNote(state.nameQueue.length + state.pendingUploads.length);
 }
 
-function addUploadedFiles(fileList) {
-  const files = [...fileList].filter((f) => f.type.startsWith("video/"));
+function isVideoFile(file) {
+  if (file?.type?.startsWith("video/")) return true;
+  return /\.(mp4|m4v|mov|qt|webm|mkv)$/i.test(file?.name || "");
+}
+
+function addUploadedFiles(fileList, source = "album") {
+  const files = [...fileList].filter(isVideoFile);
   if (!files.length) {
     setStatus("Pick video files (mp4, mov, etc.)");
     return 0;
   }
 
+  const items = files.map((file) => ({ file, source }));
+
   // Warm the classifier so the content-based name lands quickly
   loadVisionModel().catch(() => {});
 
   if (!state.booted || !scene) {
-    state.pendingUploads.push(...files);
+    state.pendingUploads.push(...items);
     updateUploadNote(state.pendingUploads.length);
     setStatus(
       files.length === 1
@@ -3126,14 +3217,15 @@ function addUploadedFiles(fileList) {
     return files.length;
   }
 
-  state.nameQueue.push(...files);
+  state.nameQueue.push(...items);
   processNameQueue();
   return files.length;
 }
 
 function onPickVideos(event) {
   const input = event.target;
-  addUploadedFiles(input.files || []);
+  const source = input === videoInputCapture ? "capture" : "album";
+  addUploadedFiles(input.files || [], source);
   input.value = "";
 }
 
@@ -3155,6 +3247,10 @@ addCreate?.addEventListener("click", () => {
 addCapture?.addEventListener("click", () => {
   closeAddModal();
   videoInputCapture?.click();
+});
+addAlbum?.addEventListener("click", () => {
+  closeAddModal();
+  videoInputField?.click();
 });
 createCancel?.addEventListener("click", () => closeCreateModal());
 createModal?.addEventListener("click", (e) => {

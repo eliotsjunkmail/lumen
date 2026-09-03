@@ -43,22 +43,41 @@ export async function loadSpots() {
         lat: Number.parseFloat(ctx.lat),
         lng: Number.parseFloat(ctx.lng),
         owner: ctx.owner || "",
+        takenAt: parseTakenAt(ctx.taken),
         video_path: `v${r.version}/${r.public_id}.${r.format || "mp4"}`,
       };
     })
     .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
 }
 
-export async function publishSpot(file, { title, lat, lng, owner }) {
+function parseTakenAt(value) {
+  if (!value) return null;
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  if (y < 1995 || y > 2100) return null;
+  return d.toISOString();
+}
+
+function safeTakenContext(value) {
+  const iso = parseTakenAt(value);
+  if (!iso) return "";
+  return iso.replace(/[|=]/g, "");
+}
+
+export async function publishSpot(file, { title, lat, lng, owner, takenAt }) {
   const form = new FormData();
   form.append("file", file);
   form.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
   form.append("tags", TAG);
   // context uses | and = as separators — strip them from the title
   const safeTitle = String(title).replace(/[|=]/g, " ").trim();
+  const taken = safeTakenContext(takenAt);
   form.append(
     "context",
-    `title=${safeTitle}|lat=${lat}|lng=${lng}|owner=${owner}`
+    taken
+      ? `title=${safeTitle}|lat=${lat}|lng=${lng}|owner=${owner}|taken=${taken}`
+      : `title=${safeTitle}|lat=${lat}|lng=${lng}|owner=${owner}`
   );
 
   const res = await fetch(
