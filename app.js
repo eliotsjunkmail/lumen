@@ -131,8 +131,6 @@ const state = {
   orientReady: false,
   northAligned: false,
   theaterAnimId: null,
-  dandelion: null,
-  blow: null,
 };
 
 let renderer;
@@ -402,11 +400,8 @@ function placementAlongLook(distance = 3.2, y = 1.4) {
   ];
 }
 
-function getLookForward() {
-  if (!camera) return new THREE.Vector3(0, 0, -1);
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-  if (forward.lengthSq() < 0.0001) forward.set(0, 0, -1);
-  return forward.normalize();
+function defaultHudHint() {
+  return "Within 25 ft, aim from any direction";
 }
 
 /** Birds, planes, and other airborne subjects sit in the sky instead of on the ground. */
@@ -416,11 +411,6 @@ function isFlyingSubject(text) {
   return /\b(bird|birds|eagle|eagles|hawk|hawks|owl|owls|parrot|parrots|crow|crows|raven|ravens|sparrow|sparrows|pigeon|pigeons|dove|doves|seagull|seagulls|gull|gulls|albatross|hummingbird|hummingbirds|falcon|falcons|vulture|vultures|swan|swans|duck|ducks|goose|geese|heron|stork|pelican|toucan|macaw|canary|finch|robin|bluejay|cardinal|woodpecker|flamingo|peacock|condor|kite|kites|plane|planes|airplane|airplanes|aeroplane|aeroplanes|jet|jets|airliner|helicopter|helicopters|chopper|drone|drones|quadcopter|ufo|ufos|spaceship|spacecraft|rocket|rockets|butterfly|butterflies|moth|moths|dragonfly|dragonflies|bee|bees|wasp|wasps|hornet|hornets|fly|flies|firefly|bat|bats|pterodactyl|pteranodon|dragon|dragons|phoenix|griffin|griffon|pegasus|angel|angels|fairy|fairies|pixie|blimp|zeppelin|glider|paraglider|airship|seaplane|biplane|warplane|hot[- ]?air[- ]?balloon|hang[- ]?glider|superhero|superman|witch|hovering|soaring|flying|in flight|in the (air|sky)|with wings)\b/.test(
     t
   );
-}
-
-function defaultHudHint() {
-  if (state.dandelion?.awaitingBlow) return "Blow into the mic to scatter the seeds";
-  return "Within 25 ft, aim from any direction";
 }
 
 function syncCreationStand(node) {
@@ -2250,356 +2240,12 @@ function updateHandGestures(nowMs) {
   addThumbsUp(state.focused);
 }
 
-function makePappusTexture() {
-  const c = document.createElement("canvas");
-  c.width = 64;
-  c.height = 64;
-  const g = c.getContext("2d");
-  const grd = g.createRadialGradient(32, 32, 1, 32, 32, 30);
-  grd.addColorStop(0, "rgba(255,255,252,0.95)");
-  grd.addColorStop(0.22, "rgba(255,250,240,0.72)");
-  grd.addColorStop(0.55, "rgba(245,240,230,0.28)");
-  grd.addColorStop(1, "rgba(255,255,255,0)");
-  g.fillStyle = grd;
-  g.beginPath();
-  g.arc(32, 32, 30, 0, Math.PI * 2);
-  g.fill();
-  // Fine filaments so it reads as a seed, not a blob
-  g.strokeStyle = "rgba(255,252,245,0.35)";
-  g.lineWidth = 1;
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2;
-    g.beginPath();
-    g.moveTo(32, 32);
-    g.lineTo(32 + Math.cos(a) * 28, 32 + Math.sin(a) * 28);
-    g.stroke();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
-  return tex;
-}
-
-function fibonacciSphere(count, radius) {
-  const pts = [];
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  for (let i = 0; i < count; i++) {
-    const y = 1 - (i / Math.max(1, count - 1)) * 2;
-    const r = Math.sqrt(Math.max(0, 1 - y * y));
-    const theta = golden * i;
-    pts.push(
-      new THREE.Vector3(
-        Math.cos(theta) * r * radius,
-        y * radius,
-        Math.sin(theta) * r * radius
-      )
-    );
-  }
-  return pts;
-}
-
-function spawnDandelionPuff() {
-  if (!scene || state.dandelion) return;
-
-  const puffTex = makePappusTexture();
-  const group = new THREE.Group();
-  const head = new THREE.Group();
-  head.position.y = 0.08;
-  group.add(head);
-
-  const stemMat = new THREE.MeshBasicMaterial({ color: 0x5a8a3a });
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, 1.12, 8), stemMat);
-  stem.position.y = -0.56;
-  group.add(stem);
-
-  const calyx = new THREE.Mesh(
-    new THREE.SphereGeometry(0.035, 10, 8),
-    new THREE.MeshBasicMaterial({ color: 0x3d6b24 })
-  );
-  head.add(calyx);
-
-  const leaf = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.18, 0.06),
-    new THREE.MeshBasicMaterial({ color: 0x4f8a32, side: THREE.DoubleSide, transparent: true, opacity: 0.92 })
-  );
-  leaf.position.set(0.07, -0.72, 0.01);
-  leaf.rotation.z = 0.45;
-  group.add(leaf);
-
-  const seedMat = new THREE.SpriteMaterial({
-    map: puffTex,
-    transparent: true,
-    depthWrite: false,
-    opacity: 0.92,
-  });
-  const kernelMat = new THREE.MeshBasicMaterial({ color: 0x6b4a22 });
-  const kernelGeo = new THREE.SphereGeometry(0.007, 6, 5);
-
-  const seeds = [];
-  const pts = fibonacciSphere(90, 0.2);
-  for (let i = 0; i < pts.length; i++) {
-    const local = pts[i];
-    const sprite = new THREE.Sprite(seedMat.clone());
-    sprite.scale.set(0.14, 0.14, 0.14);
-    sprite.position.copy(local);
-    head.add(sprite);
-
-    const kernel = new THREE.Mesh(kernelGeo, kernelMat);
-    kernel.position.copy(local).multiplyScalar(0.55);
-    head.add(kernel);
-
-    seeds.push({
-      sprite,
-      kernel,
-      local: local.clone(),
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      scattered: false,
-      life: 0,
-      maxLife: 6.5 + Math.random() * 2.4,
-      spin: Math.random() * Math.PI * 2,
-    });
-  }
-
-  scene.add(group);
-    state.dandelion = {
-    group,
-    head,
-    stem,
-    leaf,
-    seeds,
-    puffTex,
-    kernelGeo,
-    awaitingBlow: true,
-    scattered: false,
-    locked: false,
-    lockAt: 0.55,
-    age: 0,
-    blowHold: 0,
-    fade: 1,
-  };
-  plantDandelionInFront();
-
-  if (!state.focused) hudHint.textContent = defaultHudHint();
-  setStatus("A dandelion — blow into the mic", 4200);
-}
-
-function plantDandelionInFront() {
-  const d = state.dandelion;
-  if (!d?.group || !camera) return;
-  const flat = getLookForwardFlat();
-  d.group.position.set(
-    camera.position.x + flat.x * 1.55,
-    1.16,
-    camera.position.z + flat.z * 1.55
-  );
-}
-
-function uiBlocksBlow() {
-  if (state.watching || state.naming || state.mapOpen) return true;
-  if (createModal && !createModal.hidden) return true;
-  if (addModal && !addModal.hidden) return true;
-  if (nameModal && !nameModal.hidden) return true;
-  if (confirmModal && !confirmModal.hidden) return true;
-  return false;
-}
-
-function sampleBlow() {
-  const b = state.blow;
-  if (!b?.analyser) return 0;
-  if (b.ctx?.state === "suspended") b.ctx.resume().catch(() => {});
-  if (!b.freq) b.freq = new Uint8Array(b.analyser.frequencyBinCount);
-  if (!b.time) b.time = new Float32Array(b.analyser.fftSize);
-  b.analyser.getByteFrequencyData(b.freq);
-  if (typeof b.analyser.getFloatTimeDomainData === "function") {
-    b.analyser.getFloatTimeDomainData(b.time);
-  } else {
-    const bytes = b.byteTime || (b.byteTime = new Uint8Array(b.analyser.fftSize));
-    b.analyser.getByteTimeDomainData(bytes);
-    for (let i = 0; i < bytes.length; i++) b.time[i] = (bytes[i] - 128) / 128;
-  }
-
-  let rms = 0;
-  for (let i = 0; i < b.time.length; i++) rms += b.time[i] * b.time[i];
-  rms = Math.sqrt(rms / Math.max(1, b.time.length));
-
-  const n = b.freq.length;
-  const lowEnd = Math.max(2, Math.floor(n * 0.1));
-  const highStart = Math.floor(n * 0.22);
-  let low = 0;
-  let high = 0;
-  for (let i = 0; i < lowEnd; i++) low += b.freq[i];
-  for (let i = highStart; i < n; i++) high += b.freq[i];
-  low /= lowEnd;
-  high /= Math.max(1, n - highStart);
-
-  // Blow is broadband hiss: energy in highs plus a noticeable RMS.
-  // Speech is more low/mid; require highs so talking is less likely to trigger.
-  if (rms < 0.04 || high < 16) return 0;
-  if (high < low * 0.42) return 0;
-  return rms * 3.2 + high / 255;
-}
-
-function scatterDandelion(strength = 1) {
-  const d = state.dandelion;
-  if (!d || d.scattered) return;
-  d.scattered = true;
-  d.awaitingBlow = false;
-  d.locked = true;
-
-  const look = getLookForward();
-  const amp = THREE.MathUtils.clamp(strength, 0.55, 2.4);
-  const right = new THREE.Vector3().crossVectors(look, _worldUp);
-  if (right.lengthSq() < 0.0001) right.set(1, 0, 0);
-  else right.normalize();
-  const up = new THREE.Vector3().crossVectors(right, look).normalize();
-
-  d.group.updateMatrixWorld(true);
-  const headWorld = new THREE.Vector3();
-  d.head.getWorldPosition(headWorld);
-
-  for (const seed of d.seeds) {
-    seed.sprite.updateMatrixWorld(true);
-    const world = new THREE.Vector3();
-    seed.sprite.getWorldPosition(world);
-    d.head.remove(seed.sprite);
-    d.head.remove(seed.kernel);
-    scene.add(seed.sprite);
-    scene.add(seed.kernel);
-    seed.sprite.position.copy(world);
-    seed.kernel.position.copy(world);
-
-    const forwardSpeed = (2.8 + Math.random() * 2.6) * amp;
-    const side = (Math.random() - 0.5) * 2.8 * amp;
-    const lift = (0.35 + Math.random() * 1.4) * amp;
-    seed.vx = look.x * forwardSpeed + right.x * side + up.x * lift;
-    seed.vy = look.y * forwardSpeed + right.y * side + up.y * lift + 0.45;
-    seed.vz = look.z * forwardSpeed + right.z * side + up.z * lift;
-    seed.scattered = true;
-    seed.life = 0;
-  }
-
-  if (!state.focused) hudHint.textContent = "Within 25 ft, aim from any direction";
-  setStatus("Seeds on the wind", 2600);
-}
-
-function updateDandelion(t, dt) {
-  const d = state.dandelion;
-  if (!d) return;
-  d.age += dt;
-
-  if (!d.locked) {
-    plantDandelionInFront();
-    if (d.age >= d.lockAt) d.locked = true;
-  }
-
-  if (!d.scattered) {
-    d.head.rotation.y = t * 0.35;
-    const breathe = 1 + Math.sin(t * 1.8) * 0.04;
-    d.head.scale.setScalar(breathe);
-    for (const seed of d.seeds) {
-      const wobble = 1 + Math.sin(t * 3.2 + seed.spin) * 0.06;
-      seed.sprite.scale.set(0.14 * wobble, 0.14 * wobble, 0.14);
-    }
-
-    if (!uiBlocksBlow()) {
-      const score = sampleBlow();
-      if (score > 0) d.blowHold += dt;
-      else d.blowHold = Math.max(0, d.blowHold - dt * 2);
-      if (d.blowHold > 0.07) scatterDandelion(score || 1);
-    }
-    return;
-  }
-
-  // Stem leans after the blow
-  d.stem.rotation.z = THREE.MathUtils.lerp(d.stem.rotation.z, 0.18, Math.min(1, dt * 2));
-  d.fade = Math.max(0, d.fade - dt * 0.12);
-  d.stem.material.opacity = 0.35 + d.fade * 0.65;
-  d.stem.material.transparent = true;
-  if (d.leaf.material) {
-    d.leaf.material.opacity = d.fade * 0.7;
-  }
-
-  let alive = 0;
-  for (const seed of d.seeds) {
-    if (!seed.scattered) continue;
-    seed.life += dt;
-    if (seed.life > seed.maxLife) {
-      seed.sprite.visible = false;
-      seed.kernel.visible = false;
-      continue;
-    }
-    alive += 1;
-    // Light seeds: float forward, settle slowly
-    seed.vy -= 1.55 * dt;
-    seed.vx *= 1 - 0.55 * dt;
-    seed.vz *= 1 - 0.55 * dt;
-    seed.vy *= 1 - 0.28 * dt;
-    seed.sprite.position.x += seed.vx * dt;
-    seed.sprite.position.y += seed.vy * dt;
-    seed.sprite.position.z += seed.vz * dt;
-    if (seed.sprite.position.y < 0.04) {
-      seed.sprite.position.y = 0.04;
-      seed.vy = Math.abs(seed.vy) * 0.18;
-      seed.vx *= 0.82;
-      seed.vz *= 0.82;
-    }
-    seed.kernel.position.copy(seed.sprite.position);
-    seed.kernel.position.y -= 0.012;
-    const fade = 1 - seed.life / seed.maxLife;
-    seed.sprite.material.opacity = 0.2 + fade * 0.72;
-    const s = 0.09 + fade * 0.05;
-    seed.sprite.scale.set(s, s, s);
-  }
-
-  if (alive === 0 && d.fade <= 0.02) {
-    scene.remove(d.group);
-    d.puffTex?.dispose();
-    d.kernelGeo?.dispose();
-    for (const seed of d.seeds) {
-      scene.remove(seed.sprite);
-      scene.remove(seed.kernel);
-      seed.sprite.material?.dispose();
-    }
-    state.dandelion = null;
-  }
-}
-
-async function startBlowMic() {
-  if (state.blow || !navigator.mediaDevices?.getUserMedia) return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
-      video: false,
-    });
-    const AC = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AC();
-    if (ctx.state === "suspended") {
-      await ctx.resume().catch(() => {});
-    }
-    const src = ctx.createMediaStreamSource(stream);
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.38;
-    src.connect(analyser);
-    state.blow = { stream, ctx, analyser };
-  } catch (err) {
-    console.warn("Mic unavailable for dandelion blow", err);
-  }
-}
-
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(0.05, state.clock.getDelta());
   const t = state.clock.elapsedTime;
   updateCameraRig(dt);
   updateNodes(t, dt);
-  updateDandelion(t, dt);
   updateRadar();
   updateGuideArrow();
   updateMapView();
@@ -2647,7 +2293,6 @@ function bootField(message) {
 
   if (renderer) animate();
   setStatus(message);
-  spawnDandelionPuff();
   if (camEl.srcObject) {
     camEl.play().catch(() => {});
   }
@@ -2669,9 +2314,7 @@ function bootField(message) {
       updateGeoAnchors();
     } catch (err) {
       console.warn(err);
-      if (!state.dandelion?.awaitingBlow) {
-        setStatus("Enable location to pin videos within 25 ft", 4500);
-      }
+      setStatus("Enable location to pin videos within 25 ft", 4500);
     }
     syncSharedSpots();
     await processNameQueue();
@@ -2760,8 +2403,6 @@ async function enterField() {
     camEl.style.background =
       "radial-gradient(circle at 30% 20%, #1a3a2a, #06100c 60%)";
   }
-
-  startBlowMic();
 
   if (!motionOk) {
     setStatus("Allow motion access for world-locked AR", 4200);
@@ -3107,27 +2748,63 @@ function titleFromCreatePrompt(prompt) {
   return t.charAt(0).toUpperCase() + t.slice(1).slice(0, 47);
 }
 
-function buildCreateImageUrl(subject) {
+function buildCreatePrompt(subject) {
   const flying = isFlyingSubject(subject);
   const pose = flying
-    ? "in flight, airborne, wings spread, not standing, no perch, high in the air"
-    : "standing on the ground, full body, feet visible, upright";
-  const prompt = [
-    subject,
+    ? "photographed in flight, airborne, wings spread, not perched"
+    : "standing naturally, full body from head to feet";
+  return [
+    `photorealistic photograph of ${subject}`,
     pose,
-    "full body",
-    "centered",
-    "isolated object cutout",
-    "pure white background",
-    "no shadow",
-    "no ground",
-    "no text",
-    "studio product photo",
+    "ultra realistic, real-world materials and textures, natural color",
+    "natural lighting, sharp focus, 85mm lens",
+    "full body visible, subject centered",
+    "isolated on a pure white background",
+    "no shadow, no ground plane, no studio backdrop visible",
+    "no text, no watermark, no logo",
+    "not illustration, not cartoon, not 3d render, not cgi",
   ].join(", ");
+}
+
+function buildCreateImageUrl(subject) {
+  const prompt = buildCreatePrompt(subject);
   const seed = Math.floor(Math.random() * 1e9);
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(
     prompt
-  )}?width=640&height=640&nologo=true&seed=${seed}`;
+  )}?model=flux&width=1024&height=1024&nologo=true&enhance=true&seed=${seed}`;
+}
+
+async function waitForPuter(ms = 2800) {
+  const start = performance.now();
+  while (performance.now() - start < ms) {
+    if (typeof window.puter?.ai?.txt2img === "function") return true;
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  return typeof window.puter?.ai?.txt2img === "function";
+}
+
+function srcFromGeneratedImage(result) {
+  if (!result) return "";
+  if (typeof result === "string") return result;
+  if (typeof result.src === "string" && result.src) return result.src;
+  return "";
+}
+
+/** GPT Image 2 via Puter — photoreal, no API key in this app. */
+async function generateWithGptImage(promptText) {
+  const ready = await waitForPuter();
+  if (!ready) throw new Error("GPT Image unavailable");
+  const result = await withTimeout(
+    window.puter.ai.txt2img(promptText, {
+      model: "gpt-image-2",
+      quality: "high",
+    }),
+    80000,
+    "Create timed out — try again"
+  );
+  const src = srcFromGeneratedImage(result);
+  if (!src) throw new Error("GPT Image returned no picture");
+  return src;
 }
 
 function loadHtmlImage(src) {
@@ -3169,7 +2846,12 @@ async function cutoutTransparentPng(sourceUrl) {
   canvas.height = h;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(img, 0, 0, w, h);
-  const imageData = ctx.getImageData(0, 0, w, h);
+  let imageData;
+  try {
+    imageData = ctx.getImageData(0, 0, w, h);
+  } catch {
+    return { canvas, img };
+  }
   const d = imageData.data;
 
   const sample = (x, y) => {
@@ -3265,22 +2947,33 @@ function setCreateProgress(pct, message) {
   if (createStatus) createStatus.textContent = message || "";
 }
 
-/** One network image + local animation frames (avoids multi-request hangs). */
+/** GPT Image 2, with a Pollinations photo fallback. */
 async function generateCreationAnim(prompt, onProgress) {
   const subject = titleFromCreatePrompt(prompt);
-  onProgress?.(8, "Asking for a cutout…");
+  const photoPrompt = buildCreatePrompt(subject);
+  let rawUrl = "";
+  let revoke = false;
 
-  const url = buildCreateImageUrl(subject);
-  const res = await withTimeout(
-    fetch(url, { mode: "cors" }),
-    28000,
-    "Create timed out — try again"
-  );
-  if (!res.ok) throw new Error(`Create failed (${res.status})`);
-  onProgress?.(35, "Downloading…");
-  const raw = await withTimeout(res.blob(), 20000, "Download timed out");
-  const rawUrl = URL.createObjectURL(raw);
   try {
+    onProgress?.(8, "Photographing with GPT Image…");
+    try {
+      rawUrl = await generateWithGptImage(photoPrompt);
+    } catch (err) {
+      console.warn(err);
+      onProgress?.(16, "Trying a backup photo model…");
+      const url = buildCreateImageUrl(subject);
+      const res = await withTimeout(
+        fetch(url, { mode: "cors" }),
+        40000,
+        "Create timed out — try again"
+      );
+      if (!res.ok) throw new Error(`Create failed (${res.status})`);
+      onProgress?.(35, "Downloading…");
+      const raw = await withTimeout(res.blob(), 20000, "Download timed out");
+      rawUrl = URL.createObjectURL(raw);
+      revoke = true;
+    }
+
     onProgress?.(55, "Cutting out the background…");
     const { canvas } = await cutoutTransparentPng(rawUrl);
     onProgress?.(72, "Animating…");
@@ -3288,7 +2981,7 @@ async function generateCreationAnim(prompt, onProgress) {
     onProgress?.(92, "Pinning…");
     return { title: subject, ...anim };
   } finally {
-    URL.revokeObjectURL(rawUrl);
+    if (revoke && rawUrl) URL.revokeObjectURL(rawUrl);
   }
 }
 
@@ -3544,61 +3237,3 @@ window.addEventListener("keydown", (e) => {
     if (node) openTheater(node);
   }
 });
-
-window.__lumenScatterDandelion = (strength) => scatterDandelion(Number(strength) || 1.1);
-window.__lumenIsFlyingSubject = isFlyingSubject;
-window.__lumenNodeYs = () =>
-  state.nodes
-    .filter((n) => n.kind === "image")
-    .map((n) => ({
-      title: n.title,
-      flying: n.flying,
-      settled: n.settled,
-      y: Number(n.group.position.y.toFixed(3)),
-      restY: Number((n.restY ?? 0).toFixed(3)),
-      baseY: Number(n.baseY.toFixed(3)),
-    }));
-window.__lumenPlaceTest = async (title, side = 0) => {
-  const name = String(title || "Dog");
-  const flying = isFlyingSubject(name);
-  const canvasEl = document.createElement("canvas");
-  canvasEl.width = 512;
-  canvasEl.height = 640;
-  const ctx = canvasEl.getContext("2d");
-  ctx.fillStyle = flying ? "#3aa0ff" : "#ff3a1a";
-  ctx.beginPath();
-  ctx.ellipse(256, 380, 150, 210, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 42px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(name, 256, 80);
-  const img = new Image();
-  img.src = canvasEl.toDataURL();
-  if (!img.complete) {
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
-  }
-  const spawnY = flying ? 2.72 : (camera?.position.y ?? 1.4) + 1.05;
-  const position = placementAlongLook(3.2, spawnY);
-  position[0] += Number(side) || 0;
-  const node = createNode(
-    {
-      id: `test-${Date.now()}`,
-      kind: "image",
-      title: name,
-      blurb: flying ? "Flying above" : "On the ground",
-      src: img.src,
-      animFrames: [img],
-      position,
-      flying,
-      settled: flying,
-      deletable: true,
-    },
-    state.nodes.length
-  );
-  state.nodes.push(node);
-  return { flying, spawnY, restY: node.restY, baseY: node.baseY };
-};
