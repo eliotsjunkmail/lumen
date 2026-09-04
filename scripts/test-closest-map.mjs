@@ -96,6 +96,60 @@ if (clipsInTown(townNodes, selectedTown, cityOf).length !== 0) {
   throw new Error("locate town with no clips should show none");
 }
 
+function groupTownsByDistance(nodes, distOf, cityOf) {
+  const grouped = new Map();
+  for (const n of nodes) {
+    const key = cityOf(n);
+    let g = grouped.get(key);
+    if (!g) {
+      g = { key, ids: [], dist: Infinity };
+      grouped.set(key, g);
+    }
+    g.ids.push(n.id);
+    const d = distOf(n);
+    if (d < g.dist) g.dist = d;
+  }
+  return [...grouped.values()].sort(
+    (a, b) => a.dist - b.dist || a.key.localeCompare(b.key)
+  );
+}
+function defaultOpenTown(groups, userTown) {
+  if (userTown && groups.some((g) => g.key === userTown)) return userTown;
+  return groups[0]?.key || null;
+}
+function expandOne(current, next) {
+  return next || current;
+}
+
+const accordionNodes = [
+  { id: "w1", city: "Westfield, NJ", d: 10 },
+  { id: "w2", city: "Westfield, NJ", d: 20 },
+  { id: "p1", city: "Portland, ME", d: 400 },
+  { id: "b1", city: "Boston, MA", d: 250 },
+];
+const accordion = groupTownsByDistance(
+  accordionNodes,
+  (n) => n.d,
+  cityOf
+);
+if (accordion.map((g) => g.key).join("|") !== "Westfield, NJ|Boston, MA|Portland, ME") {
+  throw new Error(`towns should sort closest first — got ${accordion.map((g) => g.key)}`);
+}
+if (accordion[0].ids.join("|") !== "w1|w2") {
+  throw new Error("closest town should keep its clips together");
+}
+if (defaultOpenTown(accordion, "Westfield, NJ") !== "Westfield, NJ") {
+  throw new Error("current town should start expanded");
+}
+if (defaultOpenTown(accordion, "Nowhere") !== "Westfield, NJ") {
+  throw new Error("missing current town should fall back to closest");
+}
+let openTown = defaultOpenTown(accordion, "Westfield, NJ");
+openTown = expandOne(openTown, "Boston, MA");
+if (openTown !== "Boston, MA") throw new Error("expanding a town should close the others");
+openTown = expandOne(openTown, "Portland, ME");
+if (openTown !== "Portland, ME") throw new Error("only one town should stay open");
+
 const at4ft = cameraScale(1.22);
 if (at4ft > 0.6) throw new Error(`4 ft video still too large: ${at4ft}`);
 if (cameraScale(3.2) < 0.99) throw new Error("3.2 m should stay full size");

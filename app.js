@@ -19,7 +19,6 @@ const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 const FEET_PER_MILE = 5280;
 const RADAR_DOT_COUNT = 10;
 const VIEW_CLIP_COUNT = 20;
-const MAP_SUPPORT_NEARBY = "Camera shows this town · tap a pin to see its clips.";
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
@@ -139,7 +138,6 @@ const mapBackdrop = document.getElementById("map-backdrop");
 const mapClose = document.getElementById("map-close");
 const mapViewport = document.getElementById("map-viewport");
 const mapList = document.getElementById("map-list");
-const mapSupport = document.getElementById("map-support");
 const guide = document.getElementById("guide");
 const guideArrow = document.getElementById("guide-arrow");
 const guideLabel = document.getElementById("guide-label");
@@ -171,8 +169,10 @@ const state = {
   selectedClusterId: null,
   selectedTown: null,
   townFollowsUser: true,
+  mapExpandedTown: null,
   mapArrowEls: new Map(),
   mapRowEls: new Map(),
+  mapTownEls: new Map(),
   mapListAt: 0,
   leafletMap: null,
   leafletMarkers: new Map(),
@@ -2251,13 +2251,15 @@ function movieCalloutHtml(count, selected = false) {
 function selectMapCluster(clusterId) {
   state.selectedClusterId =
     state.selectedClusterId === clusterId ? null : clusterId;
+  if (state.selectedClusterId) {
+    const cluster = clusterMapNodes(allGeoNodes()).find(
+      (c) => c.id === state.selectedClusterId
+    );
+    const town = cluster?.nodes?.map(nodeTown).find(Boolean);
+    if (town) state.mapExpandedTown = town;
+  }
   syncLeafletMarkers();
   refreshMapList();
-  if (mapSupport) {
-    mapSupport.textContent = state.selectedClusterId
-      ? "Showing clips at this pin · tap again to clear."
-      : MAP_SUPPORT_NEARBY;
-  }
 }
 
 function clearMapClusterSelection() {
@@ -2265,9 +2267,6 @@ function clearMapClusterSelection() {
   state.selectedClusterId = null;
   syncLeafletMarkers();
   refreshMapList();
-  if (mapSupport && state.mapOpen) {
-    mapSupport.textContent = MAP_SUPPORT_NEARBY;
-  }
 }
 
 /** Add/move a callout for each video cluster; drop markers for removed ones. */
@@ -2394,7 +2393,10 @@ function recenterOnUser() {
   state.townFollowsUser = true;
   lookupPlace(you.lat, you.lng);
   const here = userTownName();
-  if (here) state.selectedTown = here;
+  if (here) {
+    state.selectedTown = here;
+    state.mapExpandedTown = here;
+  }
   townSelectSig = "";
   if (state.leafletMap) {
     const zoom = state.leafletMap.getZoom();
@@ -2410,9 +2412,6 @@ function recenterOnUser() {
   }
   updateGeoAnchors();
   syncLocateButtons();
-  if (mapSupport && state.mapOpen && !state.selectedClusterId) {
-    mapSupport.textContent = MAP_SUPPORT_NEARBY;
-  }
 }
 
 function applyMapCenterAsViewOrigin({ force = false } = {}) {
@@ -2696,6 +2695,7 @@ function selectTown(name, { fromUser = false } = {}) {
     return;
   }
   state.selectedTown = next;
+  state.mapExpandedTown = next;
   townSelectSig = "";
   syncTownDropdown();
   updateGeoAnchors();
@@ -2707,6 +2707,7 @@ function selectTown(name, { fromUser = false } = {}) {
 
 function buildMapListRow(node) {
   const li = document.createElement("li");
+  li.className = "map-clip";
   li.innerHTML = `
     <button type="button" class="map-list-play" aria-label="Watch">
       <span class="map-thumb"><span class="map-thumb-ph"></span></span>
@@ -2736,85 +2737,155 @@ function buildMapListRow(node) {
   };
 }
 
-/** Rewrite only what changed per row — avoids re-decoding thumbnails every tick. */
+function buildMapTownGroup(key) {
+  const li = document.createElement("li");
+  li.className = "map-town";
+  li.innerHTML = `
+    <button type="button" class="map-town-toggle" aria-expanded="false">
+      <span class="map-town-name"></span>
+      <span class="map-town-count"></span>
+    </button>
+    <ul class="map-town-clips"></ul>
+  `;
+  const toggle = li.querySelector(".map-town-toggle");
+  toggle.addEventListener("click", () => {
+    if (state.mapExpandedTown === key) return;
+    state.mapExpandedTown = key;
+    refreshMapList();
+  });
+  return {
+    key,
+    li,
+    toggle,
+    name: li.querySelector(".map-town-name"),
+    count: li.querySelector(".map-town-count"),
+    clips: li.querySelector(".map-town-clips"),
+  };
+}
+
+function defaultExpandedTown(groups) {
+  const here = userTownName() || state.selectedTown;
+  if (here && groups.some((g) => g.key === here)) return here;
+  return groups[0]?.key || null;
+}
+
+function collectMapTownGroups(nodes) {
+  const grouped = new Map();
+  for (const node of nodes) {
+    const key = nodeTown(node) || "Locating…";
+    let group = grouped.get(key);
+    if (!group) {
+      group = { key, nodes: [], dist: Infinity };
+      grouped.set(key, group);
+    }
+    group.nodes.push(node);
+    const off = nodeGroundOffset(node);
+    const dist = Math.hypot(off.east, off.north);
+    if (dist < group.dist) group.dist = dist;
+  }
+  return [...grouped.values()].sort((a, b) => {
+    if (a.key === "Locating…") return 1;
+    if (b.key === "Locating…") return -1;
+    return a.dist - b.dist || a.key.localeCompare(b.key);
+  });
+}
+
+function updateMapClipRow(row, node, dist) {
+  if (row.title.textContent !== node.title) row.title.textContent = node.title;
+  row.play.setAttribute(
+    "aria-label",
+    `${node.kind === "image" ? "View" : "Watch"} ${node.title}`
+  );
+  const taken = formatTakenLabel(node.takenAt);
+  const meta = [node.deletable ? "Your pin" : null, taken ? `taken ${taken}` : null]
+    .filter(Boolean)
+    .join(" · ");
+  if (row.meta.textContent !== meta) row.meta.textContent = meta;
+  const distLabel = formatMapDistance(dist);
+  if (row.dist.textContent !== distLabel) row.dist.textContent = distLabel;
+  const thumb =
+    node.thumbUrl || (node.storagePath ? thumbUrl(node.storagePath) : null);
+  if (thumb && row.thumbSrc !== thumb) {
+    row.thumbSrc = thumb;
+    row.thumbWrap.innerHTML = `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />`;
+  }
+}
+
 function refreshMapList() {
   if (!mapList) return;
 
-  let sourceNodes = viewClipNodes();
-  if (state.selectedClusterId) {
-    const cluster = clusterMapNodes(allGeoNodes()).find(
-      (c) => c.id === state.selectedClusterId
-    );
-    sourceNodes = cluster ? cluster.nodes : viewClipNodes();
-  }
-
-  const rows = sourceNodes
-    .map((node) => {
-      const off = nodeGroundOffset(node);
-      const dist = Math.hypot(off.east, off.north);
-      return { node, dist };
-    })
-    .sort((a, b) => a.dist - b.dist);
-
-  if (!rows.length) {
-    mapList.innerHTML = `<li class="map-list-empty">${
-      state.selectedClusterId
-        ? "No clips at this pin"
-        : "No clips"
-    }</li>`;
+  const groups = collectMapTownGroups(allGeoNodes());
+  if (!groups.length) {
+    mapList.innerHTML = `<li class="map-list-empty">No clips</li>`;
     state.mapRowEls = new Map();
+    state.mapTownEls = new Map();
+    state.mapArrowEls = new Map();
     return;
   }
   mapList.querySelector(".map-list-empty")?.remove();
 
   if (!state.mapRowEls) state.mapRowEls = new Map();
+  if (!state.mapTownEls) state.mapTownEls = new Map();
+
+  if (
+    !state.mapExpandedTown ||
+    !groups.some((g) => g.key === state.mapExpandedTown)
+  ) {
+    state.mapExpandedTown = defaultExpandedTown(groups);
+  }
+
+  const liveTowns = new Set();
   const liveIds = new Set();
 
-  rows.forEach(({ node, dist }, index) => {
-    liveIds.add(node.id);
-    let row = state.mapRowEls.get(node.id);
-    if (!row) {
-      row = buildMapListRow(node);
-      state.mapRowEls.set(node.id, row);
+  groups.forEach((group, index) => {
+    liveTowns.add(group.key);
+    let townEl = state.mapTownEls.get(group.key);
+    if (!townEl) {
+      townEl = buildMapTownGroup(group.key);
+      state.mapTownEls.set(group.key, townEl);
+    }
+    const atTown = mapList.children[index];
+    if (atTown !== townEl.li) mapList.insertBefore(townEl.li, atTown || null);
+
+    const expanded = group.key === state.mapExpandedTown;
+    townEl.li.classList.toggle("is-open", expanded);
+    townEl.toggle.setAttribute("aria-expanded", String(expanded));
+    if (townEl.name.textContent !== group.key) townEl.name.textContent = group.key;
+    const countLabel = `${group.nodes.length}`;
+    if (townEl.count.textContent !== countLabel) {
+      townEl.count.textContent = countLabel;
     }
 
-    // Keep DOM order matching sort order without rebuilding rows
-    const atIndex = mapList.children[index];
-    if (atIndex !== row.li) mapList.insertBefore(row.li, atIndex || null);
+    const sorted = group.nodes
+      .map((node) => {
+        const off = nodeGroundOffset(node);
+        return { node, dist: Math.hypot(off.east, off.north) };
+      })
+      .sort((a, b) => a.dist - b.dist);
 
-    if (row.title.textContent !== node.title) row.title.textContent = node.title;
-    row.play.setAttribute(
-      "aria-label",
-      `${node.kind === "image" ? "View" : "Watch"} ${node.title}`
-    );
-
-    const place =
-      node.lat != null && node.lng != null ? lookupPlace(node.lat, node.lng) : null;
-    const taken = formatTakenLabel(node.takenAt);
-    const meta = [
-      node.deletable ? "Your pin" : null,
-      taken ? `taken ${taken}` : null,
-      place,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    if (row.meta.textContent !== meta) row.meta.textContent = meta;
-
-    const distLabel = formatMapDistance(dist);
-    if (row.dist.textContent !== distLabel) row.dist.textContent = distLabel;
-
-    const thumb =
-      node.thumbUrl || (node.storagePath ? thumbUrl(node.storagePath) : null);
-    if (thumb && row.thumbSrc !== thumb) {
-      row.thumbSrc = thumb;
-      row.thumbWrap.innerHTML = `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />`;
-    }
+    sorted.forEach(({ node, dist }, clipIndex) => {
+      liveIds.add(node.id);
+      let row = state.mapRowEls.get(node.id);
+      if (!row) {
+        row = buildMapListRow(node);
+        state.mapRowEls.set(node.id, row);
+      }
+      const atClip = townEl.clips.children[clipIndex];
+      if (atClip !== row.li) townEl.clips.insertBefore(row.li, atClip || null);
+      updateMapClipRow(row, node, dist);
+    });
   });
 
   for (const [id, row] of state.mapRowEls) {
     if (!liveIds.has(id)) {
       row.li.remove();
       state.mapRowEls.delete(id);
+    }
+  }
+  for (const [key, townEl] of state.mapTownEls) {
+    if (!liveTowns.has(key)) {
+      townEl.li.remove();
+      state.mapTownEls.delete(key);
     }
   }
 
@@ -2857,14 +2928,10 @@ async function openMapModal() {
   closeFilterSheets();
   state.mapOpen = true;
   mapModal.hidden = false;
+  state.mapExpandedTown = null;
   refreshMapList();
 
   const origin = gpsOrigin();
-  if (mapSupport) {
-    mapSupport.textContent = origin
-      ? MAP_SUPPORT_NEARBY
-      : "Enable location to see the map.";
-  }
 
   if (!origin) {
     if (mapViewport) {

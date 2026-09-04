@@ -1490,7 +1490,7 @@ button {
     780px
   );
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) 12rem;
+  grid-template-rows: auto minmax(0, 1fr) minmax(15rem, 0.95fr);
   gap: 0.7rem;
   padding: 1.1rem 1.1rem 1.2rem;
   border: 1px solid var(--line);
@@ -1501,21 +1501,13 @@ button {
 
 .map-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.map-brand {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 800;
-  color: var(--signal);
-  letter-spacing: -0.04em;
-}
-
 .map-title {
-  margin: 0.1rem 0 0;
+  margin: 0;
   font-family: var(--font-display);
   font-size: 1.35rem;
   letter-spacing: -0.03em;
@@ -1537,12 +1529,6 @@ button {
 
 .map-close:active {
   transform: scale(0.94);
-}
-
-.map-support {
-  margin: 0;
-  font-size: 0.82rem;
-  color: rgba(238, 247, 240, 0.65);
 }
 
 .map-viewport {
@@ -1774,21 +1760,90 @@ button {
   padding: 0;
   display: grid;
   align-content: start;
-  gap: 0.45rem;
-  height: 12rem;
-  max-height: 12rem;
-  min-height: 12rem;
+  gap: 0.4rem;
+  min-height: 0;
+  height: 100%;
   overflow: auto;
 }
 
-.map-list li {
+.map-town {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border-radius: 14px;
+  background: rgba(238, 247, 240, 0.04);
+  border: 1px solid rgba(238, 247, 240, 0.1);
+  overflow: hidden;
+}
+
+.map-town-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.62rem 0.7rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-town-toggle::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  flex: 0 0 auto;
+  border-right: 2px solid var(--signal);
+  border-bottom: 2px solid var(--signal);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.map-town.is-open .map-town-toggle::before {
+  transform: rotate(45deg);
+}
+
+.map-town-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-town-count {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(238, 247, 240, 0.55);
+}
+
+.map-town-clips {
+  list-style: none;
+  display: none;
+  margin: 0;
+  padding: 0 0.4rem 0.45rem;
+  gap: 0.35rem;
+}
+
+.map-town.is-open .map-town-clips {
+  display: grid;
+}
+
+.map-clip {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   margin: 0;
-  padding: 0.4rem 0.55rem 0.4rem 0.4rem;
+  padding: 0.4rem 0.45rem 0.4rem 0.35rem;
   border-radius: 12px;
-  background: rgba(238, 247, 240, 0.04);
+  background: rgba(6, 16, 12, 0.45);
   border: 1px solid rgba(238, 247, 240, 0.08);
 }
 
@@ -1901,8 +1956,9 @@ button {
 }
 
 .map-list-empty {
+  list-style: none;
   margin: 0;
-  padding: 0.55rem 0.2rem;
+  padding: 0.7rem 0.2rem;
   font-size: 0.82rem;
   color: rgba(238, 247, 240, 0.55);
   text-align: center;
