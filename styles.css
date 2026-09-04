@@ -1768,12 +1768,13 @@ button {
 
 .map-town {
   display: grid;
+  align-content: start;
+  min-height: min-content;
   margin: 0;
   padding: 0;
   border-radius: 14px;
   background: rgba(238, 247, 240, 0.04);
   border: 1px solid rgba(238, 247, 240, 0.1);
-  overflow: hidden;
 }
 
 .map-town-toggle {
@@ -1833,7 +1834,8 @@ button {
 }
 
 .map-town.is-open .map-town-clips {
-  display: grid;
+  display: flex;
+  flex-direction: column;
 }
 
 .map-clip {
