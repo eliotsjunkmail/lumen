@@ -27,7 +27,7 @@ import {
   hashSeed,
   makeVintageFrameCanvas,
   vintageFrameDataUrl,
-} from "./vintage-border.js";
+} from "./vintage-border.js?v=125";
 
 const CAMERA_RANGE_MIN_FT = 25;
 const CAMERA_RANGE_MAX_FT = 10 * 5280;
