@@ -11,6 +11,9 @@ import { readVideoCaptureMeta, formatTakenLabel } from "./video-meta.js";
 
 const GEO_RANGE_FT = 25;
 const GEO_RANGE_M = GEO_RANGE_FT * 0.3048;
+const MAP_CLOSEST_COUNT = 10;
+const CAMERA_SPREAD_M = 2.05;
+const CAMERA_STACK_M = 2.4;
 
 /** Stable anonymous id so users can delete their own shared pins. */
 function getDeviceId() {
@@ -324,6 +327,21 @@ function startGeoWatch() {
   );
 }
 
+function radarZoomForNearby() {
+  const user = state.userGeo || state.originGeo;
+  if (!user) return 15;
+  const nearby = closestGeoNodes(MAP_CLOSEST_COUNT);
+  if (!nearby.length) return 15;
+  const farthest = Math.max(
+    ...nearby.map((n) => distanceMeters(user.lat, user.lng, n.lat, n.lng))
+  );
+  if (farthest < 250) return 16;
+  if (farthest < 900) return 15;
+  if (farthest < 3000) return 14;
+  if (farthest < 10000) return 13;
+  return 12;
+}
+
 /** Light street-map tile behind the camera radar, centered on the user. */
 function latLngToTile(lat, lng, zoom) {
   const n = 2 ** zoom;
@@ -339,10 +357,11 @@ function updateRadarMapBackground() {
   if (!radar) return;
   const geo = state.userGeo || state.originGeo;
   if (!geo) return;
-  const key = `${geo.lat.toFixed(4)},${geo.lng.toFixed(4)}`;
+  const zoom = radarZoomForNearby();
+  const key = `${geo.lat.toFixed(4)},${geo.lng.toFixed(4)},${zoom}`;
   if (radar.dataset.mapKey === key) return;
   radar.dataset.mapKey = key;
-  const { x, y, z } = latLngToTile(geo.lat, geo.lng, 15);
+  const { x, y, z } = latLngToTile(geo.lat, geo.lng, zoom);
   // Match the Nearby map: light OSM street tiles
   radar.style.backgroundImage = `url("https://tile.openstreetmap.org/${z}/${x}/${y}.png")`;
 }
@@ -435,9 +454,88 @@ function syncCreationStand(node) {
   if (node.beacon) node.beacon.visible = false;
 }
 
+/** Fan clips that share a GPS point into a left-to-right row in camera view. */
+function spreadCoincidentPins() {
+  for (const node of state.nodes) {
+    if (node.geoX == null) node.geoX = node.anchorX;
+    if (node.geoZ == null) node.geoZ = node.anchorZ;
+    node.spreadX = 0;
+    node.spreadZ = 0;
+  }
+
+  const visible = state.nodes.filter(
+    (n) =>
+      n.geoX != null &&
+      n.geoZ != null &&
+      n.group &&
+      n.inRange !== false &&
+      n.group.visible !== false
+  );
+
+  const assigned = new Set();
+  for (const node of visible) {
+    if (assigned.has(node.id)) continue;
+    const group = [node];
+    assigned.add(node.id);
+    for (const other of visible) {
+      if (assigned.has(other.id)) continue;
+      const d = Math.hypot(other.geoX - node.geoX, other.geoZ - node.geoZ);
+      if (d <= CAMERA_STACK_M) {
+        group.push(other);
+        assigned.add(other.id);
+      }
+    }
+    if (group.length < 2) continue;
+    group.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    const cx = group.reduce((s, n) => s + n.geoX, 0) / group.length;
+    const cz = group.reduce((s, n) => s + n.geoZ, 0) / group.length;
+    let px = -cz;
+    let pz = cx;
+    const plen = Math.hypot(px, pz);
+    if (plen < 0.4) {
+      px = 1;
+      pz = 0;
+    } else {
+      px /= plen;
+      pz /= plen;
+    }
+    const mid = (group.length - 1) / 2;
+    group.forEach((n, i) => {
+      const t = (i - mid) * CAMERA_SPREAD_M;
+      n.spreadX = px * t;
+      n.spreadZ = pz * t;
+    });
+  }
+
+  for (const node of state.nodes) {
+    if (node.geoX == null || node.geoZ == null) continue;
+    node.anchorX = node.geoX + (node.spreadX || 0);
+    node.anchorZ = node.geoZ + (node.spreadZ || 0);
+  }
+}
+
+function closestGeoNodes(limit = MAP_CLOSEST_COUNT) {
+  const user = state.userGeo || state.originGeo;
+  const geo = state.nodes.filter((n) => n.lat != null && n.lng != null);
+  if (!geo.length) return [];
+  if (!user) return geo.slice(0, limit);
+  return geo
+    .map((n) => ({
+      n,
+      d: distanceMeters(user.lat, user.lng, n.lat, n.lng),
+    }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, limit)
+    .map(({ n }) => n);
+}
+
 function updateGeoAnchors() {
   const user = state.userGeo || state.originGeo;
-  if (!user) return;
+  if (!user) {
+    spreadCoincidentPins();
+    updateRadarMapBackground();
+    return;
+  }
 
   for (const node of state.nodes) {
     if (node.lat == null || node.lng == null) continue;
@@ -453,8 +551,11 @@ function updateGeoAnchors() {
     // (Origin-relative ENU left nearby pins stranded far from the camera.)
     if (!node.worldLocked) {
       const enu = enuFromOrigin(user.lat, user.lng, node.lat, node.lng);
-      node.anchorX = enu.x;
-      node.anchorZ = enu.z;
+      node.geoX = enu.x;
+      node.geoZ = enu.z;
+    } else if (node.geoX == null || node.geoZ == null) {
+      node.geoX = node.anchorX;
+      node.geoZ = node.anchorZ;
     }
 
     const feet = Math.max(1, Math.round(dist * 3.28084));
@@ -468,6 +569,9 @@ function updateGeoAnchors() {
 
     if (!inRange && state.focused === node) setFocus(null);
   }
+
+  spreadCoincidentPins();
+  updateRadarMapBackground();
 }
 
 function setStatus(message, ms = 2800) {
@@ -676,8 +780,8 @@ function placementFromAim(spreadIndex = 0, spreadCount = 1) {
 function applyMediaAspect(node, width, height) {
   if (!node?.screen || !width || !height) return;
   const aspect = width / height;
-  // Creations float a bit larger; videos keep the existing phone-friendly size
-  const base = node.kind === "image" ? 2.1 : 2.4;
+  // Keep videos compact so a close pin does not fill the whole camera
+  const base = node.kind === "image" ? 2.1 : 1.65;
   const finalW = aspect >= 1 ? base : base * aspect;
   const finalH = finalW / aspect;
 
@@ -800,6 +904,10 @@ function createNode(item, index) {
     lng: item.lng ?? null,
     worldLocked: Boolean(item.worldLocked),
     inRange: item.lat == null ? true : Boolean(item.inRange),
+    geoX: item.position[0],
+    geoZ: item.position[2],
+    spreadX: 0,
+    spreadZ: 0,
     anchorX: item.position[0],
     anchorZ: item.position[2],
     group,
@@ -1063,6 +1171,17 @@ function updateCameraRig(dt) {
   camera.quaternion.slerp(_targetQuat, blend);
 }
 
+/** Shrink close videos so a 4 ft pin does not fill the lens. */
+function cameraVideoScale(node) {
+  if (!camera || !node?.group) return 1;
+  const dx = node.group.position.x - camera.position.x;
+  const dz = node.group.position.z - camera.position.z;
+  const dist = Math.hypot(dx, dz);
+  const h = node.screen?.geometry?.parameters?.height || 1.35;
+  const maxH = Math.min(h, Math.max(0.7, dist * 0.7));
+  return THREE.MathUtils.clamp(maxH / h, 0.32, 1);
+}
+
 function updateNodes(t, dt) {
   for (const node of state.nodes) {
     if (node.anchorX != null) node.group.position.x = node.anchorX;
@@ -1119,7 +1238,9 @@ function updateNodes(t, dt) {
     } else {
       node.frame.material.opacity = hot ? 0.55 : 0.16;
       node.screen.rotation.z = 0;
-      node.screen.scale.set(1, 1, 1);
+      const viewScale = cameraVideoScale(node);
+      node.screen.scale.set(viewScale, viewScale, 1);
+      node.frame.scale.set(viewScale, viewScale, 1);
       node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
     }
 
@@ -1292,7 +1413,7 @@ function selectMapCluster(clusterId) {
   if (mapSupport) {
     mapSupport.textContent = state.selectedClusterId
       ? "Showing clips at this pin · tap again to clear."
-      : "Pinch to zoom, drag to pan.";
+      : "Closest 10 clips · pinch to zoom, drag to pan.";
   }
 }
 
@@ -1302,7 +1423,7 @@ function clearMapClusterSelection() {
   syncLeafletMarkers();
   refreshMapList();
   if (mapSupport && state.mapOpen) {
-    mapSupport.textContent = "Pinch to zoom, drag to pan.";
+    mapSupport.textContent = "Closest 10 clips · pinch to zoom, drag to pan.";
   }
 }
 
@@ -1373,24 +1494,25 @@ function syncLeafletMarkers() {
   }
 }
 
-/** Zoom/pan to fit the user and every geo-tagged video. */
+/** Zoom/pan to the user and the closest 10 clips — not the whole country. */
 function fitMapToPins() {
   if (!state.leafletMap || !window.L) return;
   const L = window.L;
   const origin = state.userGeo || state.originGeo;
-  const points = origin ? [[origin.lat, origin.lng]] : [];
-  for (const node of state.nodes) {
-    if (node.lat != null && node.lng != null) points.push([node.lat, node.lng]);
-  }
+  const nearby = closestGeoNodes(MAP_CLOSEST_COUNT);
+  const points = [];
+  if (origin) points.push([origin.lat, origin.lng]);
+  for (const node of nearby) points.push([node.lat, node.lng]);
   if (!points.length) return;
   if (points.length === 1) {
-    state.leafletMap.setView(points[0], 17);
-  } else {
-    state.leafletMap.fitBounds(L.latLngBounds(points), {
-      padding: [32, 32],
-      maxZoom: 18,
-    });
+    state.leafletMap.setView(points[0], 16);
+    return;
   }
+  const bounds = L.latLngBounds(points);
+  state.leafletMap.fitBounds(bounds, {
+    padding: [36, 36],
+    maxZoom: 16,
+  });
 }
 
 let leafletPromise = null;
@@ -1663,7 +1785,7 @@ async function openMapModal() {
   const origin = state.userGeo || state.originGeo;
   if (mapSupport) {
     mapSupport.textContent = origin
-      ? "Pinch to zoom, drag to pan."
+      ? "Closest 10 clips · pinch to zoom, drag to pan."
       : "Enable location to see the map.";
   }
 
@@ -2408,6 +2530,7 @@ async function syncSharedSpots() {
     if (state.mapOpen) {
       refreshMapList();
       syncLeafletMarkers();
+      fitMapToPins();
     }
     setStatus(
       added === 1 ? "Loaded 1 shared pin" : `Loaded ${added} shared pins`
