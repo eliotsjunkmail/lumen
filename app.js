@@ -180,6 +180,7 @@ const _northForward = new THREE.Vector3();
 const _camLocal = new THREE.Vector3();
 const _raycaster = new THREE.Raycaster();
 const _pointerNdc = new THREE.Vector2();
+const _groundEuler = new THREE.Euler(0, 0, 0, "YXZ");
 
 function distanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6378137;
@@ -1338,10 +1339,32 @@ function updateNodes(t, dt) {
       node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
     }
 
-    // Billboard: readable from any direction when in range
-    const dx = camera.position.x - node.group.position.x;
-    const dz = camera.position.z - node.group.position.z;
-    node.group.rotation.y = Math.atan2(dx, dz);
+    // Stand upright on the ground plane and only yaw toward the viewer.
+    // Pitch/roll stay 0 so clips stay level when the phone tilts.
+    alignNodeToGround(node);
+  }
+}
+
+function alignNodeToGround(node) {
+  if (!camera || !node?.group) return;
+  const dx = camera.position.x - node.group.position.x;
+  const dz = camera.position.z - node.group.position.z;
+  const yaw = dx * dx + dz * dz > 1e-8 ? Math.atan2(dx, dz) : 0;
+  _groundEuler.set(0, yaw, 0, "YXZ");
+  node.group.quaternion.setFromEuler(_groundEuler);
+  if (node.kind === "video") {
+    if (node.screen) {
+      node.screen.rotation.x = 0;
+      node.screen.rotation.z = 0;
+    }
+    if (node.frame) {
+      node.frame.rotation.x = 0;
+      node.frame.rotation.z = 0;
+    }
+    if (node.label) {
+      node.label.rotation.x = 0;
+      node.label.rotation.z = 0;
+    }
   }
 }
 
