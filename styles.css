@@ -608,6 +608,27 @@ button {
   cursor: wait;
 }
 
+.add-fab.is-loading,
+.add-fab.is-loading:disabled {
+  opacity: 1;
+  cursor: wait;
+  pointer-events: none;
+}
+
+.add-fab.is-loading span {
+  display: none;
+}
+
+.add-fab.is-loading::after {
+  content: "";
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  border: 3px solid rgba(6, 16, 12, 0.22);
+  border-top-color: var(--ink);
+  animation: upload-spin 0.7s linear infinite;
+}
+
 .watch-label {
   margin: 0;
   font-size: 0.72rem;

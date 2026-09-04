@@ -12,6 +12,11 @@ import { readVideoCaptureMeta, formatTakenLabel } from "./video-meta.js";
 import { coverFlowSlots } from "./cover-flow.js";
 import { formatTownName } from "./place-name.js";
 import {
+  distanceMeters,
+  nearestCachedPlace as nearestPlaceInCache,
+  placeCacheKey,
+} from "./place-geo.js";
+import {
   carouselTiltAmount,
   carouselRowShiftY,
   carouselRowSpan,
@@ -207,6 +212,7 @@ const state = {
   carouselLookPitch: 0,
   carouselTiltT: 0,
   fovPinched: false,
+  mediaLoading: false,
 };
 
 let renderer;
@@ -235,17 +241,6 @@ const _camLocal = new THREE.Vector3();
 const _raycaster = new THREE.Raycaster();
 const _pointerNdc = new THREE.Vector2();
 const _groundEuler = new THREE.Euler(0, 0, 0, "YXZ");
-
-function distanceMeters(lat1, lng1, lat2, lng2) {
-  const R = 6378137;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
-}
 
 function enuFromOrigin(originLat, originLng, lat, lng) {
   const R = 6378137;
@@ -1407,6 +1402,31 @@ function updateGeoAnchors() {
   syncTownDropdown();
 }
 
+function setAddMediaLoading(on) {
+  state.mediaLoading = Boolean(on);
+  if (!addBtn) return;
+  addBtn.classList.toggle("is-loading", state.mediaLoading);
+  addBtn.disabled = state.mediaLoading;
+  addBtn.setAttribute("aria-label", state.mediaLoading ? "Loading clips" : "Add");
+  addBtn.title = state.mediaLoading ? "Loading clips" : "Add";
+}
+
+function waitForNodePoster(node, ms = 10000) {
+  if (!node || node.kind === "image") return Promise.resolve();
+  if (node.posterTex) return Promise.resolve();
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const tick = () => {
+      if (node.posterTex || Date.now() - started > ms) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+}
+
 function setStatus(message, ms = 2800) {
   statusEl.textContent = message;
   statusEl.classList.add("is-on");
@@ -1423,7 +1443,7 @@ function showUploadOverlay(title, copy) {
 
 function hideUploadOverlay() {
   if (uploadOverlay) uploadOverlay.hidden = true;
-  if (addBtn) addBtn.disabled = false;
+  if (addBtn) addBtn.disabled = state.mediaLoading;
 }
 
 function syncLabelPlacement(node) {
@@ -2689,14 +2709,13 @@ function formatMapDistance(meters) {
 
 // Reverse-geocode cache: pins cluster, so round to ~100m cells
 const placeCache = new Map();
-
-function placeCacheKey(lat, lng) {
-  return `${lat.toFixed(3)},${lng.toFixed(3)}`;
-}
+const placeRetryAt = new Map();
 
 function lookupPlace(lat, lng) {
   const key = placeCacheKey(lat, lng);
   if (placeCache.has(key)) return placeCache.get(key);
+  const retryAt = placeRetryAt.get(key) || 0;
+  if (retryAt > Date.now()) return null;
   placeCache.set(key, null); // pending
 
   fetch(
@@ -2704,7 +2723,11 @@ function lookupPlace(lat, lng) {
   )
     .then((res) => (res.ok ? res.json() : null))
     .then((data) => {
-      if (!data) return;
+      if (!data) {
+        placeCache.delete(key);
+        placeRetryAt.set(key, Date.now() + 8000);
+        return;
+      }
       const city = formatTownName(data.city || data.locality || "");
       const stateCode =
         (data.principalSubdivisionCode || "").split("-").pop() ||
@@ -2713,23 +2736,34 @@ function lookupPlace(lat, lng) {
       const place = formatTownName(
         city && stateCode ? `${city}, ${stateCode}` : city || stateCode
       );
-      if (place) {
-        placeCache.set(key, place);
-        const you = gpsOrigin();
-        if (
-          you &&
-          placeCacheKey(you.lat, you.lng) === key &&
-          state.townFollowsUser
-        ) {
-          state.selectedTown = place;
-        }
-        if (state.mapOpen) refreshMapList();
-        syncTownDropdown();
-        updateGeoAnchors();
+      if (!place) {
+        placeCache.delete(key);
+        placeRetryAt.set(key, Date.now() + 8000);
+        return;
       }
+      placeRetryAt.delete(key);
+      placeCache.set(key, place);
+      const you = gpsOrigin();
+      if (
+        state.townFollowsUser &&
+        you &&
+        distanceMeters(you.lat, you.lng, lat, lng) <= 450
+      ) {
+        state.selectedTown = place;
+      }
+      if (state.mapOpen) refreshMapList();
+      syncTownDropdown();
+      updateGeoAnchors();
     })
-    .catch(() => {});
+    .catch(() => {
+      placeCache.delete(key);
+      placeRetryAt.set(key, Date.now() + 8000);
+    });
   return null;
+}
+
+function nearestCachedPlace(lat, lng, maxM = 450) {
+  return nearestPlaceInCache(placeCache, lat, lng, maxM);
 }
 
 function nodeTown(node) {
@@ -2740,7 +2774,7 @@ function nodeTown(node) {
 function userTownName() {
   const you = gpsOrigin();
   if (!you) return null;
-  return formatTownName(placeCache.get(placeCacheKey(you.lat, you.lng))) || null;
+  return nearestCachedPlace(you.lat, you.lng);
 }
 
 function collectTownNames() {
@@ -3881,6 +3915,7 @@ function bootField(message) {
   }
 
   (async () => {
+    setAddMediaLoading(true);
     try {
       const geo = await readGps();
       state.userGeo = geo;
@@ -3888,25 +3923,31 @@ function bootField(message) {
       if (state.viewFollowsUser) state.viewGeo = { lat: geo.lat, lng: geo.lng };
       startGeoWatch();
       anchorDemoVideosToLaunch();
+      lookupPlace(geo.lat, geo.lng);
       updateGeoAnchors();
     } catch (err) {
       console.warn(err);
       setStatus("Enable location to pin videos within 25 ft", 4500);
     }
-    syncSharedSpots();
+    await syncSharedSpots();
     await processNameQueue();
   })();
 }
 
 /** Load everyone's shared pins from the cloud into the field. */
 async function syncSharedSpots() {
-  if (!cloudConfigured() || !scene) return;
+  if (!cloudConfigured() || !scene) {
+    setAddMediaLoading(false);
+    return;
+  }
 
+  setAddMediaLoading(true);
   let rows = [];
   try {
     rows = await loadSpots();
   } catch (err) {
     console.warn(err);
+    setAddMediaLoading(false);
     return;
   }
 
@@ -3958,10 +3999,9 @@ async function syncSharedSpots() {
       syncLeafletMarkers();
       if (state.viewFollowsUser) fitMapToPins();
     }
-    setStatus(
-      added === 1 ? "Loaded 1 shared pin" : `Loaded ${added} shared pins`
-    );
   }
+  await Promise.all(state.nodes.map((n) => waitForNodePoster(n)));
+  setAddMediaLoading(false);
   focusPendingGateClip();
 }
 
@@ -4850,6 +4890,7 @@ videoSizeSmallBtn?.addEventListener("click", () => setVideoSize("small"));
 
 addBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
+  if (state.mediaLoading) return;
   openAddModal();
 });
 addClose?.addEventListener("click", closeAddModal);
