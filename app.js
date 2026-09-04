@@ -19,7 +19,7 @@ const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 const FEET_PER_MILE = 5280;
 const RADAR_DOT_COUNT = 10;
 const VIEW_CLIP_COUNT = 20;
-const MAP_SUPPORT_NEARBY = "All pins · tap a city to show or hide its clips.";
+const MAP_SUPPORT_NEARBY = "All pins · tap a pin to see its clips.";
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
@@ -139,8 +139,6 @@ const mapClose = document.getElementById("map-close");
 const mapViewport = document.getElementById("map-viewport");
 const mapList = document.getElementById("map-list");
 const mapSupport = document.getElementById("map-support");
-const fieldTags = document.getElementById("field-tags");
-const mapTags = document.getElementById("map-tags");
 const guide = document.getElementById("guide");
 const guideArrow = document.getElementById("guide-arrow");
 const guideLabel = document.getElementById("guide-label");
@@ -170,8 +168,6 @@ const state = {
   demoGeoReady: false,
   mapOpen: false,
   selectedClusterId: null,
-  addedCityKeys: new Set(),
-  excludedCityKeys: new Set(),
   mapArrowEls: new Map(),
   mapRowEls: new Map(),
   mapListAt: 0,
@@ -1206,34 +1202,8 @@ function closestGeoNodes(limit) {
   return allGeoNodes().slice(0, limit);
 }
 
-function cityIsExcluded(key) {
-  return Boolean(key && state.excludedCityKeys.has(key));
-}
-
 function viewClipNodes() {
-  const closest = closestGeoNodes(VIEW_CLIP_COUNT);
-  const out = [];
-  const seen = new Set();
-  for (const n of closest) {
-    if (cityIsExcluded(nodeCityKey(n))) continue;
-    out.push(n);
-    seen.add(n.id);
-  }
-  if (!state.addedCityKeys.size) return out;
-  for (const n of allGeoNodes()) {
-    const city = nodeCityKey(n);
-    if (!city || !state.addedCityKeys.has(city) || cityIsExcluded(city)) continue;
-    if (seen.has(n.id)) continue;
-    seen.add(n.id);
-    out.push(n);
-  }
-  return out;
-}
-
-function cityIsSelected(key) {
-  if (!key || cityIsExcluded(key)) return false;
-  if (state.addedCityKeys.has(key)) return true;
-  return closestGeoNodes(VIEW_CLIP_COUNT).some((n) => nodeCityKey(n) === key);
+  return closestGeoNodes(VIEW_CLIP_COUNT);
 }
 
 function syncRadarDots() {
@@ -1264,7 +1234,6 @@ function updateGeoAnchors() {
     spreadCoincidentPins();
     syncRadarDots();
     updateRadarMapBackground();
-    syncCityTags();
     return;
   }
 
@@ -1308,7 +1277,6 @@ function updateGeoAnchors() {
   spreadCoincidentPins();
   syncRadarDots();
   updateRadarMapBackground();
-  syncCityTags();
 }
 
 function setStatus(message, ms = 2800) {
@@ -2413,9 +2381,6 @@ function recenterOnUser() {
   }
   state.viewFollowsUser = true;
   state.viewGeo = { lat: you.lat, lng: you.lng };
-  state.addedCityKeys = new Set();
-  state.excludedCityKeys = new Set();
-  cityTagSig = "";
   if (state.leafletMap) {
     const zoom = state.leafletMap.getZoom();
     withMapProgrammatic(() => {
@@ -2430,7 +2395,6 @@ function recenterOnUser() {
   }
   updateGeoAnchors();
   syncLocateButtons();
-  syncCityTags();
   if (mapSupport && state.mapOpen && !state.selectedClusterId) {
     mapSupport.textContent = MAP_SUPPORT_NEARBY;
   }
@@ -2593,7 +2557,6 @@ function formatMapDistance(meters) {
 
 // Reverse-geocode cache: pins cluster, so round to ~100m cells
 const placeCache = new Map();
-let cityTagSig = "";
 
 function placeCacheKey(lat, lng) {
   return `${lat.toFixed(3)},${lng.toFixed(3)}`;
@@ -2620,241 +2583,11 @@ function lookupPlace(lat, lng) {
       if (place) {
         placeCache.set(key, place);
         if (state.mapOpen) refreshMapList();
-        syncCityTags();
       }
     })
     .catch(() => {});
   return null;
 }
-
-function nodeCityKey(node) {
-  if (node?.lat == null || node.lng == null) return null;
-  const cached = placeCache.get(placeCacheKey(node.lat, node.lng));
-  return cached || null;
-}
-
-function ensureCityPlaces() {
-  for (const node of state.nodes) {
-    if (node.lat == null || node.lng == null) continue;
-    if (!nodeInTimeRange(node)) continue;
-    lookupPlace(node.lat, node.lng);
-  }
-}
-
-function collectCityGroups() {
-  const origin = viewOrigin();
-  const groups = new Map();
-  for (const node of allGeoNodes()) {
-    const key = nodeCityKey(node);
-    if (!key) continue;
-    let group = groups.get(key);
-    if (!group) {
-      group = {
-        key,
-        label: key,
-        nodes: [],
-        lat: 0,
-        lng: 0,
-      };
-      groups.set(key, group);
-    }
-    group.nodes.push(node);
-    group.lat += node.lat;
-    group.lng += node.lng;
-  }
-  const list = [...groups.values()].map((g) => {
-    const lat = g.lat / g.nodes.length;
-    const lng = g.lng / g.nodes.length;
-    const dist = origin
-      ? distanceMeters(origin.lat, origin.lng, lat, lng)
-      : 0;
-    return { ...g, lat, lng, dist };
-  });
-  list.sort((a, b) => a.dist - b.dist || a.label.localeCompare(b.label));
-  return list;
-}
-
-function cityGroupIsOn(group, viewIds) {
-  return group.nodes.some((n) => viewIds.has(n.id));
-}
-
-function orderCityGroups(groups, viewIds) {
-  const on = [];
-  const off = [];
-  for (const group of groups) {
-    if (cityGroupIsOn(group, viewIds)) on.push(group);
-    else off.push(group);
-  }
-  const split = Math.ceil(off.length / 2);
-  return off.slice(0, split).concat(on, off.slice(split));
-}
-
-function centerCityTagSelection(el) {
-  if (!el || el.hidden || !el.clientWidth) return;
-  const selected = [...el.querySelectorAll(".city-tag.is-on")];
-  if (!selected.length) {
-    el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
-    return;
-  }
-  const bar = el.getBoundingClientRect();
-  const first = selected[0].getBoundingClientRect();
-  const last = selected[selected.length - 1].getBoundingClientRect();
-  const clusterMid = (first.left + last.right) / 2;
-  const viewMid = bar.left + bar.width / 2;
-  const max = Math.max(0, el.scrollWidth - el.clientWidth);
-  el.scrollLeft = Math.min(max, Math.max(0, el.scrollLeft + (clusterMid - viewMid)));
-}
-
-function scheduleCityTagCenter() {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      centerCityTagSelection(fieldTags);
-      centerCityTagSelection(mapTags);
-    });
-  });
-}
-
-function renderCityTagBar(el, groups, viewIds) {
-  if (!el) return;
-  el.replaceChildren();
-  for (const group of groups) {
-    const on = cityGroupIsOn(group, viewIds);
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "city-tag";
-    if (on) btn.classList.add("is-on");
-    btn.dataset.cityKey = group.key;
-    btn.setAttribute("aria-pressed", String(on));
-    btn.textContent = group.label;
-    el.appendChild(btn);
-  }
-  el.hidden = !groups.length;
-}
-
-function syncCityTags() {
-  ensureCityPlaces();
-  const groups = collectCityGroups();
-  const viewIds = new Set(viewClipNodes().map((n) => n.id));
-  const ordered = orderCityGroups(groups, viewIds);
-  const sig = ordered
-    .map(
-      (g) =>
-        `${g.key}:${cityGroupIsOn(g, viewIds) ? 1 : 0}:${
-          state.addedCityKeys.has(g.key) ? 1 : 0
-        }:${state.excludedCityKeys.has(g.key) ? 1 : 0}`
-    )
-    .join("|");
-  if (sig === cityTagSig && fieldTags?.childElementCount === groups.length) {
-    return;
-  }
-  cityTagSig = sig;
-  renderCityTagBar(fieldTags, ordered, viewIds);
-  renderCityTagBar(mapTags, ordered, viewIds);
-  scheduleCityTagCenter();
-}
-
-function toggleCityTag(key) {
-  if (!key) return;
-  if (cityIsSelected(key)) {
-    state.addedCityKeys.delete(key);
-    state.excludedCityKeys.add(key);
-  } else {
-    state.excludedCityKeys.delete(key);
-    state.addedCityKeys.add(key);
-  }
-  cityTagSig = "";
-  updateGeoAnchors();
-  syncCityTags();
-  if (state.mapOpen) {
-    refreshMapList();
-    syncLeafletMarkers();
-  }
-}
-
-let cityTagDidPan = false;
-
-function isolateCityTagGestures(el) {
-  if (!el || el.dataset.gesturesBound) return;
-  el.dataset.gesturesBound = "1";
-  let startX = 0;
-  let startScroll = 0;
-  let activeId = null;
-  let startBtn = null;
-
-  el.addEventListener("pointerdown", (e) => {
-    e.stopPropagation();
-    if (e.button) return;
-    activeId = e.pointerId;
-    startX = e.clientX;
-    startScroll = el.scrollLeft;
-    startBtn = e.target?.closest?.(".city-tag") || null;
-    cityTagDidPan = false;
-    try {
-      el.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-  });
-  el.addEventListener("pointermove", (e) => {
-    e.stopPropagation();
-    if (activeId !== e.pointerId) return;
-    const dx = e.clientX - startX;
-    if (Math.abs(dx) > 8) cityTagDidPan = true;
-    if (cityTagDidPan) el.scrollLeft = startScroll - dx;
-  });
-  const endPointer = (e) => {
-    e.stopPropagation();
-    if (activeId !== e.pointerId) return;
-    const panned = cityTagDidPan;
-    const btn = startBtn;
-    activeId = null;
-    startBtn = null;
-    try {
-      el.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-    if (!panned && btn?.dataset.cityKey) toggleCityTag(btn.dataset.cityKey);
-  };
-  el.addEventListener("pointerup", endPointer);
-  el.addEventListener("pointercancel", (e) => {
-    e.stopPropagation();
-    if (activeId !== e.pointerId) return;
-    activeId = null;
-    startBtn = null;
-    try {
-      el.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-  });
-  el.addEventListener(
-    "wheel",
-    (e) => {
-      e.stopPropagation();
-      const delta = e.deltaX || e.deltaY;
-      if (!delta) return;
-      el.scrollLeft += delta;
-      e.preventDefault();
-    },
-    { passive: false }
-  );
-  for (const type of [
-    "mousedown",
-    "mousemove",
-    "mouseup",
-    "click",
-    "touchstart",
-    "touchmove",
-    "touchend",
-    "touchcancel",
-  ]) {
-    el.addEventListener(type, (e) => e.stopPropagation(), { passive: true });
-  }
-}
-
-isolateCityTagGestures(fieldTags);
-isolateCityTagGestures(mapTags);
 
 function buildMapListRow(node) {
   const li = document.createElement("li");
@@ -3009,7 +2742,6 @@ async function openMapModal() {
   state.mapOpen = true;
   mapModal.hidden = false;
   refreshMapList();
-  scheduleCityTagCenter();
 
   const origin = gpsOrigin();
   if (mapSupport) {
@@ -3447,14 +3179,8 @@ function bindLookControls() {
     camera.updateProjectionMatrix();
   };
 
-  const hitCityTags = (x, y) => {
-    const hit = document.elementFromPoint(x, y);
-    return Boolean(hit?.closest?.(".city-tags"));
-  };
-
   const onDown = (id, x, y) => {
     if (state.watching || state.mapOpen || !state.booted) return;
-    if (hitCityTags(x, y)) return;
     pointers.set(id, { x, y });
     if (pointers.size === 1) {
       pinching = false;
@@ -3612,7 +3338,6 @@ function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   applyLayoutFov();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  scheduleCityTagCenter();
 }
 
 // —— Hand gestures: thumbs-up reacts on the focused video ——
