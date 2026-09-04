@@ -1259,9 +1259,7 @@ function closestGeoNodes(limit) {
 function viewClipNodes() {
   const geo = allGeoNodes();
   if (!state.selectedTown) return geo.slice(0, VIEW_CLIP_COUNT);
-  return geo
-    .filter((n) => nodeTown(n) === state.selectedTown)
-    .slice(0, VIEW_CLIP_COUNT);
+  return geo.filter((n) => nodeTown(n) === state.selectedTown);
 }
 
 function syncRadarDots() {
@@ -2775,7 +2773,7 @@ function buildMapListRow(node) {
     </span>
   `;
   const play = li.querySelector(".map-list-play");
-  play.addEventListener("click", () => openTheater(node, { fromMap: true }));
+  play.addEventListener("click", () => openFieldOnClip(node));
   return {
     li,
     play,
@@ -3026,6 +3024,49 @@ function closeMapModal() {
   state.mapOpen = false;
   state.selectedClusterId = null;
   mapModal.hidden = true;
+}
+
+/** Yaw to rotate ground-forward (fromX, fromZ) onto (toX, toZ). */
+function yawDeltaToTarget(fromX, fromZ, toX, toZ) {
+  const fl = Math.hypot(fromX, fromZ);
+  const tl = Math.hypot(toX, toZ);
+  if (fl < 1e-6 || tl < 1e-6) return 0;
+  const fx = fromX / fl;
+  const fz = fromZ / fl;
+  const tx = toX / tl;
+  const tz = toZ / tl;
+  const fromYaw = Math.atan2(-fx, -fz);
+  const toYaw = Math.atan2(-tx, -tz);
+  let delta = toYaw - fromYaw;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return delta;
+}
+
+function lookAtNode(node) {
+  if (!camera || !node) return;
+  const x = node.anchorX ?? node.group?.position.x;
+  const z = node.anchorZ ?? node.group?.position.z;
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+  const dx = x - camera.position.x;
+  const dz = z - camera.position.z;
+  if (Math.hypot(dx, dz) < 0.05) return;
+  const forward = getLookForwardFlat();
+  state.offsetYaw += yawDeltaToTarget(forward.x, forward.z, dx, dz);
+  updateCameraRig(1);
+}
+
+/** Close Nearby and face this clip in the town carousel. */
+function openFieldOnClip(node) {
+  if (!node) return;
+  closeMapModal();
+  const town = nodeTown(node);
+  if (town) selectTown(town, { fromUser: true });
+  if (state.cameraLayout !== "carousel") setCameraLayout("carousel");
+  else updateGeoAnchors();
+  layoutCameraCarousel();
+  lookAtNode(node);
+  setFocus(node);
 }
 
 /** Translucent arrow that points the way to the nearest video. */

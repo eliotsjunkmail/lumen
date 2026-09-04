@@ -230,4 +230,46 @@ if (placed.dx !== 3.1 || placed.dz !== 0.2) {
   throw new Error("place radar should follow scene positions");
 }
 
+function viewClips(nodes, selectedTown, cityOf, cap = 20) {
+  if (!selectedTown) return nodes.slice(0, cap);
+  return nodes.filter((n) => cityOf(n) === selectedTown);
+}
+
+const townMany = Array.from({ length: 25 }, (_, i) => ({
+  id: `w${i}`,
+  city: "Westfield, NJ",
+}));
+const westfieldAll = viewClips(townMany, "Westfield, NJ", (n) => n.city, 20);
+if (westfieldAll.length !== 25) {
+  throw new Error("selected town should keep every clip in the carousel");
+}
+if (viewClips(townMany, null, (n) => n.city, 20).length !== 20) {
+  throw new Error("no town filter still caps at closest 20");
+}
+
+function yawDeltaToTarget(fromX, fromZ, toX, toZ) {
+  const fl = Math.hypot(fromX, fromZ);
+  const tl = Math.hypot(toX, toZ);
+  if (fl < 1e-6 || tl < 1e-6) return 0;
+  const fx = fromX / fl;
+  const fz = fromZ / fl;
+  const tx = toX / tl;
+  const tz = toZ / tl;
+  const fromYaw = Math.atan2(-fx, -fz);
+  const toYaw = Math.atan2(-tx, -tz);
+  let delta = toYaw - fromYaw;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return delta;
+}
+
+const lookRight = yawDeltaToTarget(0, -1, 1, 0);
+if (Math.abs(lookRight - -Math.PI / 2) > 1e-9) {
+  throw new Error(`looking +X from -Z should yaw -90deg — got ${lookRight}`);
+}
+const lookSame = yawDeltaToTarget(0, -1, 0, -4);
+if (Math.abs(lookSame) > 1e-9) {
+  throw new Error("already facing the clip should not yaw");
+}
+
 console.log("closest-map tests passed");
