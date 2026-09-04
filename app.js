@@ -1802,6 +1802,8 @@ function updateNodes(t, dt) {
       const h =
         (node.screen?.geometry?.parameters?.height || 1.35) * CAROUSEL_SCALE;
       node.group.position.y = CAROUSEL_FLOOR_Y + h * 0.5;
+      if (node.screen) node.screen.position.y = 0;
+      if (node.frame) node.frame.position.y = 0;
       if (node.beacon) node.beacon.visible = false;
     } else if (node.kind === "image") {
       if (node.flying) {
