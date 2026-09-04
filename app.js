@@ -1174,7 +1174,8 @@ function ensureCarouselYearMark() {
     new THREE.PlaneGeometry(1.35, 0.42),
     new THREE.MeshBasicMaterial({
       transparent: true,
-      depthTest: false,
+      depthTest: true,
+      depthWrite: false,
       side: THREE.DoubleSide,
     })
   );
@@ -1635,6 +1636,10 @@ function applyMediaAspect(node, width, height) {
   node.screen.geometry = new THREE.PlaneGeometry(finalW, finalH);
   node.frame.geometry.dispose();
   node.frame.geometry = new THREE.PlaneGeometry(finalW + 0.14, finalH + 0.14);
+  if (node.backing) {
+    node.backing.geometry.dispose();
+    node.backing.geometry = new THREE.PlaneGeometry(finalW + 0.14, finalH + 0.14);
+  }
   syncLabelPlacement(node);
   node.beacon.position.set(0, -finalH * 0.5 - 0.35, 0.05);
   node.screen.position.y = 0;
@@ -1673,6 +1678,9 @@ function setNodeMap(node, tex) {
   if (!node?.screen?.material || !tex) return;
   node.texture = tex;
   node.screen.material.map = tex;
+  node.screen.material.transparent = node.kind === "image";
+  node.screen.material.opacity = 1;
+  node.screen.material.depthWrite = true;
   node.screen.material.needsUpdate = true;
 }
 
@@ -1681,6 +1689,7 @@ function showLiveVideoTexture(node) {
   if (!node.videoTex) {
     node.videoTex = new THREE.VideoTexture(node.video);
     node.videoTex.colorSpace = THREE.SRGBColorSpace;
+    node.videoTex.generateMipmaps = false;
   }
   setNodeMap(node, node.videoTex);
 }
@@ -1755,8 +1764,10 @@ function createNode(item, index) {
       map: texture,
       side: THREE.DoubleSide,
       transparent: kind === "image",
+      opacity: 1,
       alphaTest: kind === "image" ? 0.08 : 0,
-      depthWrite: kind !== "image",
+      depthWrite: true,
+      depthTest: true,
     })
   );
   screen.position.y = 0.2;
@@ -1766,15 +1777,30 @@ function createNode(item, index) {
     new THREE.PlaneGeometry(2.56, 1.51),
     new THREE.MeshBasicMaterial({
       color: 0xffffff,
-      transparent: true,
-      opacity: kind === "image" ? 0 : 0.18,
+      transparent: false,
+      opacity: 1,
       depthWrite: true,
+      depthTest: true,
       side: THREE.DoubleSide,
     })
   );
   frame.position.z = -0.01;
   frame.position.y = 0.2;
   frame.visible = kind !== "image";
+
+  const backing = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.56, 1.51),
+    new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: false,
+      depthWrite: true,
+      depthTest: true,
+      side: THREE.DoubleSide,
+    })
+  );
+  backing.position.z = -0.02;
+  backing.position.y = 0.2;
+  backing.visible = kind !== "image";
 
   const label = new THREE.Mesh(
     new THREE.PlaneGeometry(2.2, 0.55),
@@ -1795,7 +1821,7 @@ function createNode(item, index) {
   );
   beacon.position.set(0, -0.65, 0.05);
 
-  group.add(frame, screen, label, beacon);
+  group.add(backing, frame, screen, label, beacon);
   scene.add(group);
 
   const radar = document.createElement("span");
@@ -1827,6 +1853,7 @@ function createNode(item, index) {
     group,
     screen,
     frame,
+    backing,
     label,
     beacon,
     video,
@@ -1923,11 +1950,13 @@ function disposeNode(node) {
   for (const tex of textures) tex?.dispose();
   node.screen.geometry.dispose();
   node.frame.geometry.dispose();
+  node.backing?.geometry.dispose();
   node.label.geometry.dispose();
   node.beacon.geometry.dispose();
   node.screen.material.dispose();
   node.frame.material.map?.dispose();
   node.frame.material.dispose();
+  node.backing?.material.dispose();
   node.label.material.map?.dispose();
   node.label.material.dispose();
   node.beacon.material.dispose();
@@ -2113,6 +2142,7 @@ function updateNodes(t, dt) {
       node.group.position.y = node.anchorY ?? CAROUSEL_FLOOR_Y + h * 0.5;
       if (node.screen) node.screen.position.y = 0;
       if (node.frame) node.frame.position.y = 0;
+      if (node.backing) node.backing.position.y = 0;
       if (node.beacon) node.beacon.visible = false;
     } else if (node.kind === "image") {
       if (node.flying) {
@@ -2176,11 +2206,20 @@ function updateNodes(t, dt) {
       node.screen.rotation.z = sway;
       node.screen.scale.setScalar(breathe);
     } else {
-      node.frame.material.opacity = hot ? 0.55 : 0.16;
       node.screen.rotation.z = 0;
       const viewScale = (carousel ? carouselScale() : cameraVideoScale(node)) * grow;
+      const front = hot || grow > 1.02;
+      const order = front ? 6 : 0;
+      const zLift = (node.playGrow || 0) * 0.1;
       node.screen.scale.set(viewScale, viewScale, 1);
       node.frame.scale.set(viewScale, viewScale, 1);
+      if (node.backing) node.backing.scale.set(viewScale, viewScale, 1);
+      node.screen.position.z = zLift;
+      node.frame.position.z = zLift - 0.01;
+      if (node.backing) node.backing.position.z = zLift - 0.02;
+      node.screen.renderOrder = order;
+      node.frame.renderOrder = order;
+      if (node.backing) node.backing.renderOrder = order;
       node.beacon.material.color.set(hot ? 0xffffff : 0x9ec4c8);
     }
 
