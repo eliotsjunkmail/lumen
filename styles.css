@@ -864,6 +864,34 @@ button {
   border-top: 0;
 }
 
+.field-loading {
+  position: absolute;
+  left: 50%;
+  top: 61%;
+  z-index: 4;
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.field-loading[hidden] {
+  display: none;
+}
+
+.field-loading-copy {
+  margin: 0;
+  padding: 0.28rem 0.7rem;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.62);
+  color: var(--foam);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .react-burst {
   position: absolute;
   left: 50%;
@@ -967,6 +995,7 @@ button {
 .field.is-watching .hud-top,
 .field.is-watching .hud-bottom,
 .field.is-watching .add-fab,
+.field.is-watching .field-loading,
 .field.is-watching .radar,
 .field.is-watching .field-locate,
 .field.is-watching .aim,

@@ -116,6 +116,7 @@ const videoInputGate = document.getElementById("video-input-gate");
 const videoInputField = document.getElementById("video-input-field");
 const videoInputCapture = document.getElementById("video-input-capture");
 const addBtn = document.getElementById("add-btn");
+const fieldLoading = document.getElementById("field-loading");
 const uploadOverlay = document.getElementById("upload-overlay");
 const uploadOverlayTitle = document.getElementById("upload-overlay-title");
 const uploadOverlayCopy = document.getElementById("upload-overlay-copy");
@@ -205,7 +206,7 @@ const state = {
   timeMinYr: 0,
   timeMaxYr: TIME_RANGE_MAX_YR,
   cameraLayout: "carousel",
-  videoSize: "large",
+  videoSize: "small",
   settingsOpen: false,
   carouselFwdX: null,
   carouselFwdZ: null,
@@ -758,11 +759,12 @@ function setCameraLayout(mode, { persist = true } = {}) {
 function loadVideoSize() {
   try {
     const raw = localStorage.getItem("lumen-video-size");
+    if (raw === "large") return "large";
     if (raw === "small") return "small";
   } catch {
     /* private browsing */
   }
-  return "large";
+  return "small";
 }
 
 function syncVideoSizeControls() {
@@ -1367,20 +1369,28 @@ function updateGeoAnchors() {
 
 function setAddMediaLoading(on) {
   state.mediaLoading = Boolean(on);
-  if (!addBtn) return;
-  addBtn.classList.toggle("is-loading", state.mediaLoading);
-  addBtn.disabled = state.mediaLoading;
-  addBtn.setAttribute("aria-label", state.mediaLoading ? "Loading clips" : "Add");
-  addBtn.title = state.mediaLoading ? "Loading clips" : "Add";
+  if (addBtn) {
+    addBtn.classList.toggle("is-loading", state.mediaLoading);
+    addBtn.disabled = state.mediaLoading;
+    addBtn.setAttribute("aria-label", state.mediaLoading ? "Loading clips" : "Add");
+    addBtn.title = state.mediaLoading ? "Loading clips" : "Add";
+  }
+  if (fieldLoading) fieldLoading.hidden = !state.mediaLoading;
+}
+
+function nodePosterReady(node) {
+  if (!node || node.kind === "image") return true;
+  if (node.posterFailed) return true;
+  if (!videoPosterSrc(node)) return true;
+  return Boolean(node.posterTex);
 }
 
 function waitForNodePoster(node, ms = 10000) {
-  if (!node || node.kind === "image") return Promise.resolve();
-  if (node.posterTex) return Promise.resolve();
+  if (nodePosterReady(node)) return Promise.resolve();
   return new Promise((resolve) => {
     const started = Date.now();
     const tick = () => {
-      if (node.posterTex || Date.now() - started > ms) {
+      if (nodePosterReady(node) || Date.now() - started > ms) {
         resolve();
         return;
       }
@@ -1701,7 +1711,10 @@ function applyPosterTexture(node, src) {
     applyMediaAspect(node, w, h);
   };
   img.onerror = () => {
-    if (node.posterSrc === src) node.posterSrc = "";
+    if (node.posterSrc === src) {
+      node.posterSrc = "";
+      node.posterFailed = true;
+    }
   };
   img.src = src;
 }
@@ -1825,7 +1838,8 @@ function createNode(item, index) {
     baseY: item.position[1],
     phase: index * 1.1,
     previewing: false,
-    posterTex: kind === "video" ? texture : null,
+    posterTex: null,
+    posterFailed: false,
     videoTex: null,
     posterSrc: "",
     animFrames,
@@ -3980,7 +3994,7 @@ async function syncSharedSpots() {
       if (state.viewFollowsUser) fitMapToPins();
     }
   }
-  await Promise.all(state.nodes.map((n) => waitForNodePoster(n)));
+  await Promise.all(viewClipNodes().map((n) => waitForNodePoster(n)));
   setAddMediaLoading(false);
 }
 

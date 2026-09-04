@@ -73,4 +73,26 @@ if (Math.abs(carouselDropShiftY(1.4, 0.95) - 0.45) > 1e-9) {
   throw new Error("drop should move clips down by the town-bar offset");
 }
 
+function defaultVideoSize(stored) {
+  if (stored === "large" || stored === "small") return stored;
+  return "small";
+}
+if (defaultVideoSize(null) !== "small") throw new Error("new users should get small clips");
+if (defaultVideoSize("large") !== "large") throw new Error("saved large should stick");
+if (defaultVideoSize("small") !== "small") throw new Error("saved small should stick");
+
+function nodePosterReady(node) {
+  if (!node || node.kind === "image") return true;
+  if (node.posterFailed) return true;
+  if (!node.posterSrc && !node.storagePath && !node.thumbUrl) return true;
+  return Boolean(node.posterTex);
+}
+if (!nodePosterReady({ kind: "image" })) throw new Error("creations need no poster wait");
+if (nodePosterReady({ kind: "video", storagePath: "x", posterTex: null })) {
+  throw new Error("cloud clips should wait for a poster");
+}
+if (!nodePosterReady({ kind: "video", storagePath: "x", posterTex: {} })) {
+  throw new Error("loaded poster should clear the spinner");
+}
+
 console.log("carousel-tilt tests passed");
