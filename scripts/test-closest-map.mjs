@@ -101,6 +101,23 @@ function toggleCity(key, addedCities, excludedCities, isOn) {
     addedCities.add(key);
   }
 }
+function orderCityGroups(groups, selectedKeys) {
+  const on = groups.filter((g) => selectedKeys.has(g.key));
+  const off = groups.filter((g) => !selectedKeys.has(g.key));
+  const split = Math.ceil(off.length / 2);
+  return off.slice(0, split).concat(on, off.slice(split));
+}
+function selectedClusterCentered(labels, selected) {
+  const keys = selected instanceof Set ? selected : new Set(selected);
+  const ordered = orderCityGroups(
+    labels.map((key) => ({ key })),
+    keys
+  ).map((g) => g.key);
+  const first = ordered.findIndex((k) => keys.has(k));
+  const last = ordered.length - 1 - [...ordered].reverse().findIndex((k) => keys.has(k));
+  const mid = (ordered.length - 1) / 2;
+  return { ordered, first, last, mid };
+}
 const cityNodes = [
   { id: "w1", lat: 40.71, lng: -74.0, city: "Westfield, NJ" },
   { id: "w2", lat: 40.711, lng: -74.0, city: "Westfield, NJ" },
@@ -197,6 +214,40 @@ excluded.clear();
 const afterLocate = viewWithCities(cityNodes, user, 2, added, cityOf, excluded);
 if (afterLocate.length !== 2 || !afterLocate.includes("w1")) {
   throw new Error("locate should clear added and excluded cities");
+}
+
+const pillOrder = selectedClusterCentered(
+  [
+    "Westfield, NJ",
+    "Jersey City, NJ",
+    "Waterbury, CT",
+    "Boston, MA",
+    "Portland, ME",
+    "Bar Harbor, ME",
+    "Township of Towamensing, PA",
+  ],
+  ["Westfield, NJ", "Jersey City, NJ"]
+);
+if (pillOrder.ordered[pillOrder.first] !== "Westfield, NJ") {
+  throw new Error("selected cities should stay grouped");
+}
+if (
+  pillOrder.ordered.slice(pillOrder.first, pillOrder.last + 1).join("|") !==
+  "Westfield, NJ|Jersey City, NJ"
+) {
+  throw new Error("selected pills should sit together in the middle");
+}
+if (Math.abs((pillOrder.first + pillOrder.last) / 2 - pillOrder.mid) > 0.6) {
+  throw new Error(
+    `selected cluster should be centered — got ${pillOrder.ordered.join(", ")}`
+  );
+}
+const noneOn = orderCityGroups(
+  ["A", "B", "C"].map((key) => ({ key })),
+  new Set()
+).map((g) => g.key);
+if (noneOn.join("|") !== "A|B|C") {
+  throw new Error("unselected row should keep original order");
 }
 
 const at4ft = cameraScale(1.22);

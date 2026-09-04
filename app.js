@@ -2513,11 +2513,47 @@ function collectCityGroups() {
   return list;
 }
 
+function cityGroupIsOn(group, viewIds) {
+  return group.nodes.some((n) => viewIds.has(n.id));
+}
+
+function orderCityGroups(groups, viewIds) {
+  const on = [];
+  const off = [];
+  for (const group of groups) {
+    if (cityGroupIsOn(group, viewIds)) on.push(group);
+    else off.push(group);
+  }
+  const split = Math.ceil(off.length / 2);
+  return off.slice(0, split).concat(on, off.slice(split));
+}
+
+function centerCityTagSelection(el) {
+  if (!el || el.hidden) return;
+  const selected = [...el.querySelectorAll(".city-tag.is-on")];
+  if (!selected.length) {
+    el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
+    return;
+  }
+  const first = selected[0];
+  const last = selected[selected.length - 1];
+  const mid = (first.offsetLeft + last.offsetLeft + last.offsetWidth) / 2;
+  const max = Math.max(0, el.scrollWidth - el.clientWidth);
+  el.scrollLeft = Math.min(max, Math.max(0, mid - el.clientWidth / 2));
+}
+
+function scheduleCityTagCenter() {
+  requestAnimationFrame(() => {
+    centerCityTagSelection(fieldTags);
+    centerCityTagSelection(mapTags);
+  });
+}
+
 function renderCityTagBar(el, groups, viewIds) {
   if (!el) return;
   el.replaceChildren();
   for (const group of groups) {
-    const on = group.nodes.some((n) => viewIds.has(n.id));
+    const on = cityGroupIsOn(group, viewIds);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "city-tag";
@@ -2527,6 +2563,7 @@ function renderCityTagBar(el, groups, viewIds) {
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (cityTagDidPan) return;
       toggleCityTag(group.key);
     });
     el.appendChild(btn);
@@ -2538,10 +2575,11 @@ function syncCityTags() {
   ensureCityPlaces();
   const groups = collectCityGroups();
   const viewIds = new Set(viewClipNodes().map((n) => n.id));
-  const sig = groups
+  const ordered = orderCityGroups(groups, viewIds);
+  const sig = ordered
     .map(
       (g) =>
-        `${g.key}:${g.nodes.some((n) => viewIds.has(n.id)) ? 1 : 0}:${
+        `${g.key}:${cityGroupIsOn(g, viewIds) ? 1 : 0}:${
           state.addedCityKeys.has(g.key) ? 1 : 0
         }:${state.excludedCityKeys.has(g.key) ? 1 : 0}`
     )
@@ -2550,8 +2588,9 @@ function syncCityTags() {
     return;
   }
   cityTagSig = sig;
-  renderCityTagBar(fieldTags, groups, viewIds);
-  renderCityTagBar(mapTags, groups, viewIds);
+  renderCityTagBar(fieldTags, ordered, viewIds);
+  renderCityTagBar(mapTags, ordered, viewIds);
+  scheduleCityTagCenter();
 }
 
 function toggleCityTag(key) {
@@ -2572,17 +2611,27 @@ function toggleCityTag(key) {
   }
 }
 
+let cityTagDidPan = false;
+
 function isolateCityTagGestures(el) {
   if (!el || el.dataset.gesturesBound) return;
   el.dataset.gesturesBound = "1";
+  let startX = 0;
   const stop = (e) => {
     e.stopPropagation();
   };
+  el.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    startX = e.clientX;
+    cityTagDidPan = false;
+  });
+  el.addEventListener("pointermove", (e) => {
+    e.stopPropagation();
+    if (Math.abs(e.clientX - startX) > 10) cityTagDidPan = true;
+  });
   // Bubble phase so the pills still receive clicks; just keep the
   // gesture from bubbling into the field and turning the carousel.
   for (const type of [
-    "pointerdown",
-    "pointermove",
     "pointerup",
     "pointercancel",
     "mousedown",
@@ -2754,6 +2803,7 @@ async function openMapModal() {
   state.mapOpen = true;
   mapModal.hidden = false;
   refreshMapList();
+  scheduleCityTagCenter();
 
   const origin = gpsOrigin();
   if (mapSupport) {
@@ -3353,6 +3403,7 @@ function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   applyLayoutFov();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  scheduleCityTagCenter();
 }
 
 // —— Hand gestures: thumbs-up reacts on the focused video ——
