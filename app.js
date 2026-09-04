@@ -23,7 +23,12 @@ import {
   carouselDragLiftDelta,
   carouselRelativePitch,
 } from "./carousel-tilt.js";
-import { playGrowTarget, stepPlayGrow, playGrowScale } from "./play-grow.js";
+import {
+  playGrowTarget,
+  stepPlayGrow,
+  playGrowScale,
+  layoutSizeWithGrow,
+} from "./play-grow.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
 const CAMERA_RANGE_MAX_FT = 10 * 5280;
@@ -839,7 +844,10 @@ function carouselIsTwoRow() {
 }
 
 function carouselNodeHeight(node) {
-  return (node.screen?.geometry?.parameters?.height || 1.35) * carouselScale();
+  return layoutSizeWithGrow(
+    (node.screen?.geometry?.parameters?.height || 1.35) * carouselScale(),
+    node?.playGrow
+  );
 }
 
 function carouselPairColumns(nodes) {
@@ -1056,7 +1064,7 @@ function carouselNodeWidth(node) {
       ? (node.frame?.geometry?.parameters?.width || sw / scale + 0.14) *
         scale
       : 0;
-  return Math.max(sw, fw, 1.15 * scale);
+  return layoutSizeWithGrow(Math.max(sw, fw, 1.15 * scale), node?.playGrow);
 }
 
 function carouselRingVectors() {
@@ -2131,16 +2139,22 @@ const FOCUS_RENDER_ORDER = 20;
 
 /** Draw the viewfinder clip on top of every other pin. */
 function applyFocusLayer(node, front) {
-  const order = front ? FOCUS_RENDER_ORDER : 0;
-  if (node.group) node.group.renderOrder = order;
-  const parts = [node.screen, node.frame, node.backing, node.label, node.thumbsBadge];
-  for (const mesh of parts) {
+  if (node.group) node.group.renderOrder = front ? FOCUS_RENDER_ORDER : 0;
+  const stack = [
+    [node.backing, front ? FOCUS_RENDER_ORDER : 0, true],
+    [node.frame, front ? FOCUS_RENDER_ORDER + 1 : 0, true],
+    [node.screen, front ? FOCUS_RENDER_ORDER + 3 : 1, false],
+    [node.label, front ? FOCUS_RENDER_ORDER + 4 : 0, false],
+    [node.thumbsBadge, front ? FOCUS_RENDER_ORDER + 4 : 0, false],
+  ];
+  for (const [mesh, order, keepDepth] of stack) {
     if (!mesh) continue;
     mesh.renderOrder = order;
     const mat = mesh.material;
     if (!mat) continue;
-    mat.depthTest = !front;
-    mat.depthWrite = !front;
+    const depth = !front || keepDepth;
+    mat.depthTest = depth;
+    mat.depthWrite = depth;
   }
 }
 
@@ -2157,6 +2171,17 @@ function cameraVideoScale(node) {
 
 function updateNodes(t, dt) {
   const carousel = state.cameraLayout === "carousel";
+  for (const node of state.nodes) {
+    const hot = state.focused === node;
+    node.playGrow = stepPlayGrow(
+      node.playGrow,
+      playGrowTarget({
+        focused: hot,
+        kind: node.kind,
+      }),
+      dt
+    );
+  }
   if (carousel) layoutCameraCarousel();
   for (const node of state.nodes) {
     if (node.anchorX != null) node.group.position.x = node.anchorX;
@@ -2196,16 +2221,6 @@ function updateNodes(t, dt) {
     }
 
     const hot = state.focused === node;
-    node.playGrow = stepPlayGrow(
-      node.playGrow,
-      playGrowTarget({
-        focused: hot,
-        kind: node.kind,
-        previewing: node.previewing,
-        paused: node.video ? node.video.paused : true,
-      }),
-      dt
-    );
     const grow = playGrowScale(node.playGrow);
     const front = hot || grow > 1.02;
     applyFocusLayer(node, front);
@@ -3298,16 +3313,36 @@ function updateGuideArrow() {
   guide.classList.add("is-on");
 }
 
+async function waitForVideoFrame(video) {
+  if (!video) return;
+  if (video.readyState >= 2 && !video.paused && video.currentTime > 0) return;
+  await new Promise((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      video.removeEventListener("playing", done);
+      video.removeEventListener("timeupdate", done);
+      resolve();
+    };
+    video.addEventListener("playing", done);
+    video.addEventListener("timeupdate", done);
+    setTimeout(done, 600);
+  });
+}
+
 async function ensurePreview(node) {
   if (!node || node.previewing || state.watching) return;
   if (!node.video || node.kind === "image") return;
+  showPosterTexture(node);
   try {
-    node.video.currentTime = Math.min(1, node.video.duration || 1);
     await node.video.play();
+    await waitForVideoFrame(node.video);
+    if (state.focused !== node || state.watching) return;
     node.previewing = true;
     showLiveVideoTexture(node);
   } catch {
-    // Autoplay may fail until gesture; ignore
+    showPosterTexture(node);
   }
 }
 

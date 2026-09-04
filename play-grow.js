@@ -3,9 +3,14 @@ export const PLAY_GROW_EXPAND_SEC = 2;
 /** Faster shrink when the aperture leaves the clip. */
 export const PLAY_GROW_SHRINK_SEC = 0.65;
 
-/** 1 while a focused video is actually playing; otherwise 0. */
-export function playGrowTarget({ focused, kind, previewing, paused } = {}) {
-  return focused && kind !== "image" && previewing && paused === false ? 1 : 0;
+/** 1 while a video is in the viewfinder; otherwise 0. */
+export function playGrowTarget({ focused, kind } = {}) {
+  return focused && kind !== "image" ? 1 : 0;
+}
+
+/** Layout width/height including the current grow amount. */
+export function layoutSizeWithGrow(base, playGrow) {
+  return (Number(base) || 0) * playGrowScale(playGrow);
 }
 
 /** Linear step of the 0…1 grow amount. */
