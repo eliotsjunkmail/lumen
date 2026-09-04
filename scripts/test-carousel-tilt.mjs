@@ -3,6 +3,7 @@ import {
   carouselRowShiftY,
   carouselRowSpan,
   carouselDragLiftDelta,
+  carouselRelativePitch,
 } from "../carousel-tilt.js";
 
 if (carouselTiltAmount(0, 0.2) !== 0) {
@@ -44,6 +45,22 @@ if (carouselDragLiftDelta(0.2) >= 0) {
 }
 if (carouselDragLiftDelta(-80) !== 80) {
   throw new Error("drag lift should invert screen dy");
+}
+
+if (carouselRelativePitch(0.18, 0.18) !== 0) {
+  throw new Error("initial phone tilt should be the home pose");
+}
+if (Math.abs(carouselRelativePitch(-0.05, 0.15) - -0.2) > 1e-9) {
+  throw new Error("tilting up from the start pose should be relative");
+}
+if (carouselTiltAmount(carouselRelativePitch(0.2, 0.2), 0.2) !== 0) {
+  throw new Error("opening while looking down should keep the bottom row");
+}
+if (Math.abs(carouselTiltAmount(carouselRelativePitch(-0.05, 0.15), 0.2) - 1) > 1e-9) {
+  throw new Error("looking up from a down start should reach the top row");
+}
+if (carouselRelativePitch(0.1, null) !== 0) {
+  throw new Error("no baseline should hold the home view");
 }
 
 console.log("carousel-tilt tests passed");

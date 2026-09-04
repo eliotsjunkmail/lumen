@@ -1246,6 +1246,10 @@ button {
   background: var(--signal-deep);
 }
 
+.add-option[hidden] {
+  display: none !important;
+}
+
 .name-submit:disabled,
 .add-option:disabled {
   opacity: 0.5;

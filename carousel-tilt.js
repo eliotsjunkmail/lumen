@@ -19,6 +19,15 @@ export function carouselRowSpan(bottomY, topY, dist) {
 }
 
 /**
+ * Pitch relative to the pose when the lens opened (or carousel was selected).
+ * Missing baseline keeps the home view (0).
+ */
+export function carouselRelativePitch(pitch, baseline) {
+  if (!Number.isFinite(pitch) || !Number.isFinite(baseline)) return 0;
+  return pitch - baseline;
+}
+
+/**
  * Finger-up is negative screen dy. Positive lift moves the ring up
  * so the carousel follows the finger.
  */

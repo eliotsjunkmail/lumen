@@ -21,6 +21,7 @@ import {
   carouselRowShiftY,
   carouselRowSpan,
   carouselDragLiftDelta,
+  carouselRelativePitch,
 } from "./carousel-tilt.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
@@ -91,6 +92,8 @@ const layoutPlaceBtn = document.getElementById("layout-place");
 const layoutCarouselBtn = document.getElementById("layout-carousel");
 const videoSizeLargeBtn = document.getElementById("video-size-large");
 const videoSizeSmallBtn = document.getElementById("video-size-small");
+const createSettingOffBtn = document.getElementById("create-setting-off");
+const createSettingOnBtn = document.getElementById("create-setting-on");
 const settingsBtn = document.getElementById("settings-btn");
 const settingsModal = document.getElementById("settings-modal");
 const settingsClose = document.getElementById("settings-close");
@@ -212,7 +215,9 @@ const state = {
   carouselYearMarks: [],
   carouselLookPitch: 0,
   carouselTiltT: 0,
+  carouselPitchBaseline: null,
   carouselDragY: 0,
+  showCreate: false,
   fovPinched: false,
   mediaLoading: false,
 };
@@ -813,6 +818,7 @@ function setCameraLayout(mode, { persist = true } = {}) {
   } else if (changed || state.carouselFwdX == null) {
     captureCarouselHeading();
     guide?.classList.remove("is-on");
+    state.carouselPitchBaseline = null;
   }
   if (changed) state.fovPinched = false;
   applyLayoutFov();
@@ -868,6 +874,36 @@ function setVideoSize(size, { persist = true } = {}) {
     }
   }
   updateGeoAnchors();
+}
+
+function loadShowCreate() {
+  try {
+    return localStorage.getItem("lumen-show-create") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function syncShowCreateControls() {
+  const on = Boolean(state.showCreate);
+  createSettingOnBtn?.classList.toggle("is-on", on);
+  createSettingOffBtn?.classList.toggle("is-on", !on);
+  createSettingOnBtn?.setAttribute("aria-pressed", String(on));
+  createSettingOffBtn?.setAttribute("aria-pressed", String(!on));
+  if (addCreate) addCreate.hidden = !on;
+}
+
+function setShowCreate(on, { persist = true } = {}) {
+  state.showCreate = Boolean(on);
+  if (!state.showCreate) closeCreateModal(true);
+  syncShowCreateControls();
+  if (persist) {
+    try {
+      localStorage.setItem("lumen-show-create", state.showCreate ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 function carouselScale() {
@@ -2095,7 +2131,15 @@ function updateCameraRig(dt) {
   if (state.cameraLayout === "carousel") {
     // Keep the ring level; two-row mode uses this pitch to slide rows into the viewfinder.
     _euler.setFromQuaternion(_targetQuat, "YXZ");
-    state.carouselLookPitch = _euler.x;
+    const pitch = _euler.x;
+    if (state.orientReady && state.carouselPitchBaseline == null) {
+      state.carouselPitchBaseline = pitch;
+      state.carouselTiltT = 0;
+    }
+    state.carouselLookPitch = carouselRelativePitch(
+      pitch,
+      state.carouselPitchBaseline
+    );
     _euler.x = 0;
     _euler.z = 0;
     _targetQuat.setFromEuler(_euler);
@@ -3893,6 +3937,8 @@ function bootField(message) {
 
   bindLookControls();
   enableOrientation();
+  state.carouselPitchBaseline = null;
+  state.carouselTiltT = 0;
   window.addEventListener("resize", onResize);
 
   setAddMediaLoading(true);
@@ -4738,6 +4784,7 @@ function closeCreateModal(silent = false) {
 }
 
 function openCreateModal() {
+  if (!state.showCreate) return;
   if (!createModal) return;
   closeAddModal();
   if (createProgress) createProgress.hidden = true;
@@ -4857,6 +4904,8 @@ state.cameraLayout = loadCameraLayout();
 syncLayoutControls();
 state.videoSize = loadVideoSize();
 syncVideoSizeControls();
+state.showCreate = loadShowCreate();
+syncShowCreateControls();
 
 settingsBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -4889,6 +4938,8 @@ layoutPlaceBtn?.addEventListener("click", () => setCameraLayout("place"));
 layoutCarouselBtn?.addEventListener("click", () => setCameraLayout("carousel"));
 videoSizeLargeBtn?.addEventListener("click", () => setVideoSize("large"));
 videoSizeSmallBtn?.addEventListener("click", () => setVideoSize("small"));
+createSettingOffBtn?.addEventListener("click", () => setShowCreate(false));
+createSettingOnBtn?.addEventListener("click", () => setShowCreate(true));
 
 addBtn?.addEventListener("click", (e) => {
   e.stopPropagation();

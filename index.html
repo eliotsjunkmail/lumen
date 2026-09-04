@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=117" />
+    <link rel="stylesheet" href="styles.css?v=118" />
   </head>
   <body>
     <div id="app">
@@ -356,6 +356,32 @@
               </button>
             </div>
           </section>
+
+          <section class="settings-block">
+            <p class="range-sheet-label" id="create-sheet-label">Create [something]</p>
+            <div
+              class="layout-choices is-pair"
+              role="group"
+              aria-labelledby="create-sheet-label"
+            >
+              <button
+                type="button"
+                id="create-setting-off"
+                class="layout-choice is-on"
+                aria-pressed="true"
+              >
+                Hide
+              </button>
+              <button
+                type="button"
+                id="create-setting-on"
+                class="layout-choice"
+                aria-pressed="false"
+              >
+                Show
+              </button>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -371,7 +397,7 @@
           </button>
           <p class="name-brand">SnapTrax</p>
 
-          <button type="button" id="add-create" class="add-option add-option-signal">
+          <button type="button" id="add-create" class="add-option add-option-signal" hidden>
             Create [something]
           </button>
           <button type="button" id="add-capture" class="add-option add-option-signal">
@@ -449,6 +475,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=117"></script>
+    <script type="module" src="app.js?v=118"></script>
   </body>
 </html>
