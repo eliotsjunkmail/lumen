@@ -23,8 +23,8 @@ const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
 const CAROUSEL_MAX = VIEW_CLIP_COUNT;
-const CAROUSEL_GAP_M = 1.55;
-const CAROUSEL_GAP_SMALL_M = 0.9;
+const CAROUSEL_GAP_M = 0.12;
+const CAROUSEL_PACK = 1.04;
 const CAROUSEL_SCALE = 3;
 const CAROUSEL_SCALE_SMALL = 1.45;
 const CAROUSEL_FLOOR_Y = 0.05;
@@ -929,7 +929,7 @@ function layoutCameraCarousel() {
   const { radius, angles } = carouselRingLayout(
     widths,
     CAROUSEL_DIST_M,
-    twoRow ? CAROUSEL_GAP_SMALL_M : CAROUSEL_GAP_M
+    CAROUSEL_GAP_M
   );
 
   columns.forEach((col, i) => {
@@ -1004,31 +1004,37 @@ function carouselChordAngle(width, radius) {
   return 2 * Math.atan(half / radius);
 }
 
-/** Pack clip widths onto a full circle around the viewer, centered on heading. */
+/** Pack clip widths onto a circle around the viewer, centered on heading.
+ *  Leftover arc stays empty behind you so neighbors stay almost touching. */
 function carouselRingLayout(widths, distM = CAROUSEL_DIST_M, gapM = CAROUSEL_GAP_M) {
   const n = widths.length;
   if (!n) return { radius: distM, angles: [] };
 
-  const packed = widths.map((w) => Math.max(0.4, w * 1.18));
+  const packed = widths.map((w) => Math.max(0.4, w * CAROUSEL_PACK));
   let radius = Math.max(0.5, distM, Math.max(...packed) * 0.55);
   let itemAng = [];
   let gapAng = 0;
   let needed = 0;
+  let wrap = false;
   for (let i = 0; i < 16; i += 1) {
     itemAng = packed.map((w) => carouselChordAngle(w, radius));
     gapAng = gapM / radius;
-    needed = itemAng.reduce((s, a) => s + a, 0) + n * gapAng;
+    const closed = itemAng.reduce((s, a) => s + a, 0) + n * gapAng;
+    wrap = closed > Math.PI * 2 + 1e-6;
+    needed = wrap
+      ? closed
+      : itemAng.reduce((s, a) => s + a, 0) + Math.max(0, n - 1) * gapAng;
     if (needed <= Math.PI * 2 + 1e-6) break;
     radius *= needed / (Math.PI * 2);
   }
 
-  const extra = Math.max(0, (Math.PI * 2 - needed) / n);
   const angles = [];
   let cursor = 0;
   for (let i = 0; i < n; i += 1) {
     cursor += itemAng[i] * 0.5;
     angles.push(cursor);
-    cursor += itemAng[i] * 0.5 + gapAng + extra;
+    cursor += itemAng[i] * 0.5;
+    if (i < n - 1 || wrap) cursor += gapAng;
   }
   const mid = (angles[0] + angles[n - 1]) * 0.5;
   for (let i = 0; i < n; i += 1) angles[i] -= mid;

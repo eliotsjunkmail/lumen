@@ -1,5 +1,6 @@
 const CAROUSEL_DIST_M = 6.2;
-const CAROUSEL_GAP_M = 1.55;
+const CAROUSEL_GAP_M = 0.12;
+const CAROUSEL_PACK = 1.04;
 
 function carouselChordAngle(width, radius) {
   const half = Math.max(0, width) * 0.5;
@@ -11,26 +12,31 @@ function carouselRingLayout(widths, distM = CAROUSEL_DIST_M, gapM = CAROUSEL_GAP
   const n = widths.length;
   if (!n) return { radius: distM, angles: [] };
 
-  const packed = widths.map((w) => Math.max(0.4, w * 1.18));
+  const packed = widths.map((w) => Math.max(0.4, w * CAROUSEL_PACK));
   let radius = Math.max(0.5, distM, Math.max(...packed) * 0.55);
   let itemAng = [];
   let gapAng = 0;
   let needed = 0;
+  let wrap = false;
   for (let i = 0; i < 16; i += 1) {
     itemAng = packed.map((w) => carouselChordAngle(w, radius));
     gapAng = gapM / radius;
-    needed = itemAng.reduce((s, a) => s + a, 0) + n * gapAng;
+    const closed = itemAng.reduce((s, a) => s + a, 0) + n * gapAng;
+    wrap = closed > Math.PI * 2 + 1e-6;
+    needed = wrap
+      ? closed
+      : itemAng.reduce((s, a) => s + a, 0) + Math.max(0, n - 1) * gapAng;
     if (needed <= Math.PI * 2 + 1e-6) break;
     radius *= needed / (Math.PI * 2);
   }
 
-  const extra = Math.max(0, (Math.PI * 2 - needed) / n);
   const angles = [];
   let cursor = 0;
   for (let i = 0; i < n; i += 1) {
     cursor += itemAng[i] * 0.5;
     angles.push(cursor);
-    cursor += itemAng[i] * 0.5 + gapAng + extra;
+    cursor += itemAng[i] * 0.5;
+    if (i < n - 1 || wrap) cursor += gapAng;
   }
   const mid = (angles[0] + angles[n - 1]) * 0.5;
   for (let i = 0; i < n; i += 1) angles[i] -= mid;
@@ -93,6 +99,17 @@ assertNoOverlap(Array(20).fill(5.4), twenty.radius, twenty.angles);
 
 const mixed = carouselRingLayout([2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4]);
 assertNoOverlap([2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4], mixed.radius, mixed.angles);
+
+const three = carouselRingLayout([5.4, 5.4, 5.4]);
+const neighbor = three.angles[1] - three.angles[0];
+const evenSpread = (2 * Math.PI) / 3;
+if (neighbor > evenSpread * 0.7) {
+  throw new Error("leftover ring must not become horizontal gap between clips");
+}
+const half = Math.atan((5.4 * 0.5) / three.radius);
+if (neighbor + 1e-4 < 2 * half) {
+  throw new Error("tight pack still must not overlap");
+}
 
 function carouselForwardMidAngle(a, b) {
   let d = b - a;
