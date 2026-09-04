@@ -20,15 +20,16 @@ const RADAR_DOT_COUNT = 10;
 const MAP_LIST_COUNT = 20;
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
-const CAROUSEL_DIST_M = 3.2;
+const CAROUSEL_DIST_M = 6.2;
 const CAROUSEL_MAX = 12;
 const CAROUSEL_GAP_M = 0.96;
 const CAROUSEL_SCALE = 3;
+const CAROUSEL_RADIUS_MAX = 7.8;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
-/** Horizontal FOV so 3× clips fill the lens after the ring grows to fit. */
-const CAROUSEL_HFOV = 34;
+/** Horizontal FOV so 3× clips fill the lens without shrinking the ring. */
+const CAROUSEL_HFOV = 40;
 const CAROUSEL_FOV_MAX = 145;
 
 /** Stable anonymous id so users can delete their own shared pins. */
@@ -908,8 +909,11 @@ function carouselRingLayout(widths, distM = CAROUSEL_DIST_M, gapM = CAROUSEL_GAP
     gapAng = gapM / radius;
     needed = itemAng.reduce((s, a) => s + a, 0) + n * gapAng;
     if (needed <= Math.PI * 2 + 1e-6) break;
-    radius *= needed / (Math.PI * 2);
+    radius = Math.min(CAROUSEL_RADIUS_MAX, radius * (needed / (Math.PI * 2)));
   }
+  itemAng = widths.map((w) => carouselChordAngle(w, radius));
+  gapAng = gapM / radius;
+  needed = itemAng.reduce((s, a) => s + a, 0) + n * gapAng;
 
   const extra = Math.max(0, (Math.PI * 2 - needed) / n);
   const angles = [];
