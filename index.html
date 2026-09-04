@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=134" />
+    <link rel="stylesheet" href="styles.css?v=135" />
   </head>
   <body>
     <div id="app">
@@ -47,7 +47,18 @@
         <canvas id="stage" class="stage"></canvas>
 
         <header class="hud-top">
-          <p class="hud-brand">Lumen</p>
+          <div class="town-slot">
+            <button
+              type="button"
+              class="town-pick"
+              id="town-select"
+              aria-haspopup="dialog"
+              aria-controls="map-modal"
+              aria-expanded="false"
+              aria-label="Open map"
+            >Nearby</button>
+            <p class="watch-label" id="focus-label">Scan the field</p>
+          </div>
           <div class="hud-top-actions">
             <button
               type="button"
@@ -116,7 +127,7 @@
           <div id="react-burst" class="react-burst" hidden aria-hidden="true">👍</div>
 
           <button type="button" id="add-btn" class="add-fab" aria-label="Add" title="Add">
-            <span aria-hidden="true">+</span>
+            <span class="add-fab-shutter" aria-hidden="true"></span>
           </button>
           <input
             id="video-input-field"
@@ -134,21 +145,6 @@
             capture="environment"
             hidden
           />
-
-          <footer class="hud-bottom">
-          <div class="town-slot">
-            <button
-              type="button"
-              class="town-pick"
-              id="town-select"
-              aria-haspopup="dialog"
-              aria-controls="map-modal"
-              aria-expanded="false"
-              aria-label="Open map"
-            ></button>
-            <p class="watch-label" id="focus-label">Scan the field</p>
-          </div>
-        </footer>
 
         <div id="theater" class="theater" hidden>
           <button
@@ -463,6 +459,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=134"></script>
+    <script type="module" src="app.js?v=135"></script>
   </body>
 </html>
