@@ -2127,6 +2127,23 @@ function updateCameraRig(dt) {
   camera.quaternion.slerp(_targetQuat, blend);
 }
 
+const FOCUS_RENDER_ORDER = 20;
+
+/** Draw the viewfinder clip on top of every other pin. */
+function applyFocusLayer(node, front) {
+  const order = front ? FOCUS_RENDER_ORDER : 0;
+  if (node.group) node.group.renderOrder = order;
+  const parts = [node.screen, node.frame, node.backing, node.label, node.thumbsBadge];
+  for (const mesh of parts) {
+    if (!mesh) continue;
+    mesh.renderOrder = order;
+    const mat = mesh.material;
+    if (!mat) continue;
+    mat.depthTest = !front;
+    mat.depthWrite = !front;
+  }
+}
+
 /** Shrink close videos so a 4 ft pin does not fill the lens. */
 function cameraVideoScale(node) {
   if (!camera || !node?.group) return 1;
@@ -2190,6 +2207,9 @@ function updateNodes(t, dt) {
       dt
     );
     const grow = playGrowScale(node.playGrow);
+    const front = hot || grow > 1.02;
+    applyFocusLayer(node, front);
+    const zLift = front ? 0.22 + (node.playGrow || 0) * 0.12 : 0;
     if (node.kind === "image") {
       node.frame.visible = false;
       // Flipbook + idle sway so creations feel alive
@@ -2213,21 +2233,16 @@ function updateNodes(t, dt) {
         : 1 + Math.sin(t * 3.1 + node.phase) * (node.flying ? 0.04 : 0.02);
       node.screen.rotation.z = sway;
       node.screen.scale.setScalar(breathe);
+      node.screen.position.z = zLift;
     } else {
       node.screen.rotation.z = 0;
       const viewScale = (carousel ? carouselScale() : cameraVideoScale(node)) * grow;
-      const front = hot || grow > 1.02;
-      const order = front ? 6 : 0;
-      const zLift = (node.playGrow || 0) * 0.1;
       node.screen.scale.set(viewScale, viewScale, 1);
       node.frame.scale.set(viewScale, viewScale, 1);
       if (node.backing) node.backing.scale.set(viewScale, viewScale, 1);
       node.screen.position.z = zLift;
       node.frame.position.z = zLift - 0.01;
       if (node.backing) node.backing.position.z = zLift - 0.02;
-      node.screen.renderOrder = order;
-      node.frame.renderOrder = order;
-      if (node.backing) node.backing.renderOrder = order;
       node.beacon.material.color.set(hot ? 0xffffff : 0x9ec4c8);
     }
 
