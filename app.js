@@ -10,6 +10,7 @@ import {
 } from "./cloud.js";
 import { readVideoCaptureMeta, formatTakenLabel } from "./video-meta.js";
 import { coverFlowSlots } from "./cover-flow.js";
+import { formatTownName } from "./place-name.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
 const CAMERA_RANGE_MAX_FT = 10 * 5280;
@@ -1259,7 +1260,7 @@ function closestGeoNodes(limit) {
 function viewClipNodes() {
   const geo = allGeoNodes();
   if (!state.selectedTown) return geo.slice(0, VIEW_CLIP_COUNT);
-  return geo.filter((n) => nodeTown(n) === state.selectedTown);
+  return geo.filter((n) => nodeTown(n) === formatTownName(state.selectedTown));
 }
 
 function syncRadarDots() {
@@ -2636,13 +2637,14 @@ function lookupPlace(lat, lng) {
     .then((res) => (res.ok ? res.json() : null))
     .then((data) => {
       if (!data) return;
-      const city = data.city || data.locality || "";
+      const city = formatTownName(data.city || data.locality || "");
       const stateCode =
         (data.principalSubdivisionCode || "").split("-").pop() ||
         data.principalSubdivision ||
         "";
-      const place =
-        city && stateCode ? `${city}, ${stateCode}` : city || stateCode;
+      const place = formatTownName(
+        city && stateCode ? `${city}, ${stateCode}` : city || stateCode
+      );
       if (place) {
         placeCache.set(key, place);
         const you = gpsOrigin();
@@ -2664,20 +2666,21 @@ function lookupPlace(lat, lng) {
 
 function nodeTown(node) {
   if (node?.lat == null || node.lng == null) return null;
-  return placeCache.get(placeCacheKey(node.lat, node.lng)) || null;
+  return formatTownName(placeCache.get(placeCacheKey(node.lat, node.lng))) || null;
 }
 
 function userTownName() {
   const you = gpsOrigin();
   if (!you) return null;
-  return placeCache.get(placeCacheKey(you.lat, you.lng)) || null;
+  return formatTownName(placeCache.get(placeCacheKey(you.lat, you.lng))) || null;
 }
 
 function collectTownNames() {
   const names = new Set();
   const here = userTownName();
   if (here) names.add(here);
-  if (state.selectedTown) names.add(state.selectedTown);
+  const selected = formatTownName(state.selectedTown);
+  if (selected) names.add(selected);
   for (const node of allGeoNodes()) {
     const town = nodeTown(node);
     if (town) names.add(town);
@@ -2704,7 +2707,8 @@ let townSelectSig = "";
 function syncTownDropdown() {
   if (!townSelect) return;
   const towns = collectTownNames();
-  const selected = state.selectedTown || "";
+  const selected = formatTownName(state.selectedTown || "");
+  if (selected && state.selectedTown !== selected) state.selectedTown = selected;
   const locating = Boolean(state.townFollowsUser && !selected);
   const sig = `${towns.join("|")}@${selected}@${locating ? 1 : 0}`;
   if (sig === townSelectSig) return;
@@ -2736,7 +2740,7 @@ function syncTownDropdown() {
 }
 
 function selectTown(name, { fromUser = false } = {}) {
-  const next = String(name || "").trim();
+  const next = formatTownName(name);
   if (!next) return;
   if (fromUser) state.townFollowsUser = false;
   if (state.selectedTown === next) {
