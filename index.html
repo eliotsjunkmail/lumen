@@ -7,27 +7,31 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="theme-color" content="#06100c" />
+    <meta name="theme-color" content="#000000" />
     <title>Lumen</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2306100c'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23c6ff4a'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%23000000'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%239ec4c8'/%3E%3C/svg%3E"
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=122" />
+    <link rel="stylesheet" href="styles.css?v=123" />
   </head>
   <body>
     <div id="app">
       <section id="gate" class="gate" aria-label="Enter Lumen">
         <div class="gate-atmosphere" aria-hidden="true"></div>
-        <div class="gate-copy">
+        <header class="gate-top">
           <p class="brand">Lumen</p>
+        </header>
+        <div class="gate-copy">
           <h1 class="headline">Memories that live where they happened</h1>
+        </div>
+        <div class="gate-bottom">
           <div class="cta-row">
             <button type="button" id="enter-btn" class="cta">Open lens</button>
             <label class="cta cta-secondary" for="video-input-gate">Add videos</label>
@@ -460,6 +464,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=122"></script>
+    <script type="module" src="app.js?v=123"></script>
   </body>
 </html>

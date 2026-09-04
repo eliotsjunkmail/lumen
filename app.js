@@ -1141,10 +1141,10 @@ function createYearMarkTexture(year) {
   ctx.clearRect(0, 0, c.width, c.height);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "800 92px Syne, sans-serif";
-  ctx.fillStyle = "rgba(6, 16, 12, 0.45)";
+  ctx.font = "700 92px Inter, sans-serif";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
   ctx.fillText(String(year), 258, 84);
-  ctx.fillStyle = "#c6ff4a";
+  ctx.fillStyle = "#ffffff";
   ctx.fillText(String(year), 256, 80);
   const texture = new THREE.CanvasTexture(c);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -1414,25 +1414,25 @@ function createLabelTexture(title, blurb, { reserveDelete = false, thumbs = 0, k
   c.height = 256;
   const ctx = c.getContext("2d");
   ctx.clearRect(0, 0, c.width, c.height);
-  ctx.fillStyle = "rgba(6, 16, 12, 0.72)";
-  roundRect(ctx, 24, 36, 976, 184, 28);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
+  roundRect(ctx, 24, 36, 976, 184, 8);
   ctx.fill();
-  ctx.strokeStyle = "rgba(198, 255, 74, 0.55)";
-  ctx.lineWidth = 4;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+  ctx.lineWidth = 3;
   ctx.stroke();
-  ctx.fillStyle = "#c6ff4a";
-  ctx.font = "700 42px Manrope, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 42px Inter, sans-serif";
   ctx.fillText(kind === "image" ? "LOOK" : "WATCH", 64, 110);
-  ctx.fillStyle = "#eef7f0";
-  ctx.font = "800 64px Syne, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 64px Inter, sans-serif";
   // Leave room on the right for the HTML × when this is a deletable upload
   const titleMax = reserveDelete ? 18 : thumbs ? 22 : 28;
   ctx.fillText(title.slice(0, titleMax), 64, 175);
-  ctx.fillStyle = "rgba(238, 247, 240, 0.7)";
-  ctx.font = "600 34px Manrope, sans-serif";
+  ctx.font = "500 34px Inter, sans-serif";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
   ctx.fillText(blurb.slice(0, reserveDelete ? 28 : 40), 260, 110);
   if (thumbs > 0) {
-    ctx.font = "800 72px Manrope, Apple Color Emoji, Segoe UI Emoji, sans-serif";
+    ctx.font = "800 72px Inter, Apple Color Emoji, Segoe UI Emoji, sans-serif";
     ctx.textAlign = "right";
     ctx.fillText(thumbs > 1 ? `👍${thumbs}` : "👍", 960, 155);
     ctx.textAlign = "left";
@@ -1448,7 +1448,7 @@ function createThumbsBadgeTexture(count) {
   c.height = 256;
   const ctx = c.getContext("2d");
   ctx.clearRect(0, 0, 256, 256);
-  ctx.fillStyle = "rgba(6, 16, 12, 0.55)";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
   roundRect(ctx, 24, 24, 208, 208, 48);
   ctx.fill();
   ctx.font = "160px Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif";
@@ -1456,8 +1456,8 @@ function createThumbsBadgeTexture(count) {
   ctx.textBaseline = "middle";
   ctx.fillText("👍", 128, 118);
   if (count > 1) {
-    ctx.font = "700 56px Manrope, sans-serif";
-    ctx.fillStyle = "#eef7f0";
+    ctx.font = "700 56px Inter, sans-serif";
+    ctx.fillStyle = "#ffffff";
     ctx.fillText(String(count), 128, 200);
   }
   const texture = new THREE.CanvasTexture(c);
@@ -1737,7 +1737,7 @@ function createNode(item, index) {
   const frame = new THREE.Mesh(
     new THREE.PlaneGeometry(2.56, 1.51),
     new THREE.MeshBasicMaterial({
-      color: 0xc6ff4a,
+      color: 0xffffff,
       transparent: true,
       opacity: kind === "image" ? 0 : 0.18,
       depthWrite: true,
@@ -1763,7 +1763,7 @@ function createNode(item, index) {
 
   const beacon = new THREE.Mesh(
     new THREE.SphereGeometry(0.08, 16, 16),
-    new THREE.MeshBasicMaterial({ color: 0xc6ff4a })
+    new THREE.MeshBasicMaterial({ color: 0x9ec4c8 })
   );
   beacon.position.set(0, -0.65, 0.05);
 
@@ -1962,7 +1962,7 @@ function buildScene() {
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-  const hemi = new THREE.HemisphereLight(0xe8ffe0, 0x102018, 1.1);
+  const hemi = new THREE.HemisphereLight(0xf2f2f2, 0x1a1a1a, 1.05);
   scene.add(hemi);
   const key = new THREE.DirectionalLight(0xffffff, 0.55);
   key.position.set(2, 4, 1);
@@ -1971,7 +1971,7 @@ function buildScene() {
   const ground = new THREE.Mesh(
     new THREE.RingGeometry(0.6, 8.5, 64),
     new THREE.MeshBasicMaterial({
-      color: 0xc6ff4a,
+      color: 0xffffff,
       transparent: true,
       opacity: 0.07,
       side: THREE.DoubleSide,
@@ -2139,7 +2139,7 @@ function updateNodes(t, dt) {
       const viewScale = carousel ? carouselScale() : cameraVideoScale(node);
       node.screen.scale.set(viewScale, viewScale, 1);
       node.frame.scale.set(viewScale, viewScale, 1);
-      node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
+      node.beacon.material.color.set(hot ? 0xffffff : 0x9ec4c8);
     }
 
     // Stand upright on the ground plane and only yaw toward the viewer.
@@ -3989,7 +3989,7 @@ async function enterField() {
   } catch (err) {
     console.error(err);
     camEl.style.background =
-      "radial-gradient(circle at 30% 20%, #1a3a2a, #06100c 60%)";
+      "radial-gradient(circle at 30% 20%, #2a2a2a, #000000 60%)";
   }
 
   if (!motionOk) {
