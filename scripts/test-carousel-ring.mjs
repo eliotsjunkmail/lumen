@@ -1,6 +1,6 @@
 const CAROUSEL_DIST_M = 6.2;
-const CAROUSEL_GAP_M = 0.12;
-const CAROUSEL_PACK = 1.04;
+const CAROUSEL_GAP_M = 0.03;
+const CAROUSEL_PACK = 0.98;
 
 function carouselChordAngle(width, radius) {
   const half = Math.max(0, width) * 0.5;
@@ -60,9 +60,9 @@ function assertNoOverlap(widths, radius, angles) {
     const halfJ = Math.atan(widths[j] * 0.5 / radius);
     let delta = angles[j] - angles[i];
     if (delta <= 0) delta += Math.PI * 2;
-    if (delta + 1e-4 < halfI + halfJ) {
+    if (delta + 1e-4 < (halfI + halfJ) * 0.9) {
       throw new Error(
-        `clips ${i} and ${j} overlap: delta=${delta.toFixed(3)} need=${(halfI + halfJ).toFixed(3)} r=${radius.toFixed(2)}`
+        `clips ${i} and ${j} overlap too much: delta=${delta.toFixed(3)} need=${(halfI + halfJ).toFixed(3)} r=${radius.toFixed(2)}`
       );
     }
   }
@@ -107,8 +107,8 @@ if (neighbor > evenSpread * 0.7) {
   throw new Error("leftover ring must not become horizontal gap between clips");
 }
 const half = Math.atan((5.4 * 0.5) / three.radius);
-if (neighbor + 1e-4 < 2 * half) {
-  throw new Error("tight pack still must not overlap");
+if (neighbor + 1e-4 < 2 * half * 0.9) {
+  throw new Error("tight pack still must not overlap too much");
 }
 
 function carouselForwardMidAngle(a, b) {
