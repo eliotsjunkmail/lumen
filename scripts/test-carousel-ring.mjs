@@ -151,7 +151,7 @@ function carouselPairColumns(nodes) {
   }
   return cols;
 }
-function stackedRowY(bottomH, topH, gap = 0.24, floor = 0.05) {
+function stackedRowY(bottomH, topH, gap = 0.85, floor = 0.05) {
   return {
     bottom: floor + bottomH * 0.5,
     top: floor + bottomH + gap + topH * 0.5,
@@ -172,6 +172,9 @@ if (!(ys.top > ys.bottom + 1.96)) {
 }
 if (Math.abs(ys.bottom - 1.03) > 0.02) {
   throw new Error("bottom row should rest on the floor");
+}
+if (ys.top - ys.bottom - 1.96 < 0.8) {
+  throw new Error("two-row small carousel should leave air between rows");
 }
 const largeCols = four.map((id) => [id]);
 if (largeCols.length !== 4) throw new Error("large size stays one row");

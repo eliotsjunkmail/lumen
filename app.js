@@ -44,7 +44,7 @@ const CAROUSEL_PACK = 0.98;
 const CAROUSEL_SCALE = 3;
 const CAROUSEL_SCALE_SMALL = 1.45;
 const CAROUSEL_FLOOR_Y = 0.05;
-const CAROUSEL_ROW_GAP_M = 0.24;
+const CAROUSEL_ROW_GAP_M = 0.85;
 /** Sit with the viewfinder, slightly above mid-screen. */
 const CAROUSEL_DROP_Y = -0.2;
 const LOOK_FOV_DEFAULT = 60;
