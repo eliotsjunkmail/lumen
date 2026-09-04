@@ -19,9 +19,9 @@ export function carouselRowSpan(bottomY, topY, dist) {
 }
 
 /**
- * Finger-up is negative screen dy. Return a pitch delta that slides the
- * ring the same way so the carousel follows the finger.
+ * Finger-up is negative screen dy. Positive lift moves the ring up
+ * so the carousel follows the finger.
  */
-export function carouselDragPitchDelta(screenDy) {
-  return -screenDy;
+export function carouselDragLiftDelta(screenDyPx) {
+  return -screenDyPx;
 }

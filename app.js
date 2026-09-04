@@ -20,7 +20,7 @@ import {
   carouselTiltAmount,
   carouselRowShiftY,
   carouselRowSpan,
-  carouselDragPitchDelta,
+  carouselDragLiftDelta,
 } from "./carousel-tilt.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
@@ -212,6 +212,7 @@ const state = {
   carouselYearMarks: [],
   carouselLookPitch: 0,
   carouselTiltT: 0,
+  carouselDragY: 0,
   fovPinched: false,
   mediaLoading: false,
 };
@@ -854,6 +855,7 @@ function setVideoSize(size, { persist = true } = {}) {
     if (next === "large") {
       state.offsetPitch = 0;
       state.carouselTiltT = 0;
+      state.carouselDragY = 0;
     }
   }
   applyLayoutFov();
@@ -1060,14 +1062,15 @@ function layoutCameraCarousel() {
       const targetT = carouselTiltAmount(state.carouselLookPitch, span);
       state.carouselTiltT += (targetT - state.carouselTiltT) * 0.22;
       shiftY = carouselRowShiftY(camY, bottomY, topY, state.carouselTiltT);
-      for (const col of columns) {
-        for (const node of col) node.anchorY += shiftY;
-      }
     } else {
       state.carouselTiltT = 0;
     }
   } else {
     state.carouselTiltT = 0;
+  }
+  shiftY += state.carouselDragY;
+  for (const col of columns) {
+    for (const node of col) node.anchorY += shiftY;
   }
 
   syncCarouselYearMarks(
@@ -3593,13 +3596,10 @@ function bindLookControls() {
     // Horizontal only. In carousel, drag turns you inside the ring
     // so the photos follow the finger; in place mode, drag looks around.
     const dx = (x - prev.x) * 0.005;
-    const dy = (y - prev.y) * 0.005;
     if (state.cameraLayout === "carousel") {
       state.offsetYaw += dx;
-      if (carouselIsTwoRow()) {
-        state.offsetPitch += carouselDragPitchDelta(dy);
-        state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -0.45, 0.12);
-      }
+      state.carouselDragY += carouselDragLiftDelta(y - prev.y) * 0.004;
+      state.carouselDragY = THREE.MathUtils.clamp(state.carouselDragY, -1.4, 1.4);
     } else {
       state.offsetYaw -= dx;
     }
@@ -4988,10 +4988,14 @@ window.addEventListener("keydown", (e) => {
   const step = 0.08;
   if (e.key === "ArrowLeft") state.offsetYaw += step;
   if (e.key === "ArrowRight") state.offsetYaw -= step;
-  if (carouselIsTwoRow()) {
-    if (e.key === "ArrowUp") state.offsetPitch += carouselDragPitchDelta(-step * 0.7);
-    if (e.key === "ArrowDown") state.offsetPitch += carouselDragPitchDelta(step * 0.7);
-    state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -0.45, 0.12);
+  if (state.cameraLayout === "carousel") {
+    if (e.key === "ArrowUp") {
+      state.carouselDragY += carouselDragLiftDelta(-48) * 0.004;
+    }
+    if (e.key === "ArrowDown") {
+      state.carouselDragY += carouselDragLiftDelta(48) * 0.004;
+    }
+    state.carouselDragY = THREE.MathUtils.clamp(state.carouselDragY, -1.4, 1.4);
   } else {
     if (e.key === "ArrowUp") state.offsetPitch += step * 0.7;
     if (e.key === "ArrowDown") state.offsetPitch -= step * 0.7;

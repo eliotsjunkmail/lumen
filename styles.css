@@ -296,7 +296,7 @@ button {
 
 /* —— AR field —— */
 .field {
-  background: #000;
+  background: #14241c;
   touch-action: auto;
 }
 
@@ -311,10 +311,10 @@ button {
 .cam {
   object-fit: cover;
   object-position: center;
-  background: #0c1812;
+  background: #1a3328;
   z-index: 0;
-  filter: blur(18px) brightness(0.5) saturate(0.78);
-  transform: scale(1.14);
+  filter: blur(16px) brightness(0.68) saturate(0.88);
+  transform: scale(1.12);
   transform-origin: center center;
 }
 
