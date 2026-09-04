@@ -173,7 +173,7 @@ const state = {
   timeMinYr: 0,
   timeMaxYr: TIME_RANGE_MAX_YR,
   timeOpen: false,
-  cameraLayout: "place",
+  cameraLayout: "carousel",
   layoutOpen: false,
   carouselFwdX: null,
   carouselFwdZ: null,
@@ -675,11 +675,11 @@ function closeFilterSheets() {
 function loadCameraLayout() {
   try {
     const raw = localStorage.getItem("lumen-camera-layout");
-    if (raw === "carousel") return "carousel";
+    if (raw === "place") return "place";
   } catch {
     /* private browsing */
   }
-  return "place";
+  return "carousel";
 }
 
 function syncLayoutControls() {
@@ -716,6 +716,7 @@ function setCameraLayout(mode, { persist = true } = {}) {
     }
   }
   updateGeoAnchors();
+  for (const node of state.nodes) refreshNodeChrome(node);
 }
 
 function openLayoutSheet() {
@@ -825,24 +826,31 @@ function spreadCoincidentPins() {
   }
 }
 
-/** Line in-range clips up in front of the camera, left to right. */
+/** Line in-range clips up in front of the camera, oldest on the left. */
 function layoutCameraCarousel() {
-  const candidates = state.nodes
+  const nearby = state.nodes
     .filter((n) => n.group && n.inRange !== false)
     .sort((a, b) => {
       const da = a.distanceM ?? Infinity;
       const db = b.distanceM ?? Infinity;
       if (da !== db) return da - db;
       return String(a.id).localeCompare(String(b.id));
-    });
+    })
+    .slice(0, CAROUSEL_MAX);
 
-  const row = candidates.slice(0, CAROUSEL_MAX);
-  const inRow = new Set(row.map((n) => n.id));
+  nearby.sort((a, b) => {
+    const ta = nodeTakenMs(a);
+    const tb = nodeTakenMs(b);
+    if (ta !== tb) return ta - tb;
+    return String(a.id).localeCompare(String(b.id));
+  });
+
+  const inRow = new Set(nearby.map((n) => n.id));
   for (const node of state.nodes) {
     if (!node.group) continue;
     node.group.visible = node.inRange !== false && inRow.has(node.id);
   }
-  if (!row.length) return;
+  if (!nearby.length) return;
 
   if (state.carouselFwdX == null || state.carouselFwdZ == null) {
     captureCarouselHeading();
@@ -862,12 +870,18 @@ function layoutCameraCarousel() {
 
   const originX = camera ? camera.position.x : 0;
   const originZ = camera ? camera.position.z : 0;
-  const mid = (row.length - 1) / 2;
-  row.forEach((node, i) => {
+  const mid = (nearby.length - 1) / 2;
+  nearby.forEach((node, i) => {
     const t = (i - mid) * CAMERA_SPREAD_M;
     node.anchorX = originX + fx * CAROUSEL_DIST_M + rx * t;
     node.anchorZ = originZ + fz * CAROUSEL_DIST_M + rz * t;
   });
+}
+
+function nodeTakenMs(node) {
+  if (!node?.takenAt) return Number.POSITIVE_INFINITY;
+  const t = new Date(node.takenAt).getTime();
+  return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
 }
 
 function closestGeoNodes(limit) {
@@ -979,6 +993,39 @@ function hideUploadOverlay() {
   if (addBtn) addBtn.disabled = false;
 }
 
+function createCarouselLabelTexture(title, date) {
+  const c = document.createElement("canvas");
+  c.width = 1024;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = "rgba(6, 16, 12, 0.72)";
+  roundRect(ctx, 24, 36, 976, 184, 28);
+  ctx.fill();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#eef7f0";
+  ctx.font = "800 52px Syne, sans-serif";
+  ctx.fillText(String(title || "").slice(0, 28), 512, 128);
+  ctx.fillStyle = "rgba(238, 247, 240, 0.75)";
+  ctx.font = "600 36px Manrope, sans-serif";
+  ctx.fillText(String(date || ""), 512, 184);
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function syncLabelPlacement(node) {
+  if (!node?.label) return;
+  const h = node.screen?.geometry?.parameters?.height || 1.35;
+  if (state.cameraLayout === "carousel") {
+    node.label.position.set(0, -h * 0.5 - 0.5, 0.02);
+    if (node.beacon) node.beacon.visible = false;
+  } else {
+    node.label.position.set(0, h * 0.5 + 0.55, 0.02);
+    if (node.beacon) node.beacon.visible = node.kind !== "image";
+  }
+}
+
 function createLabelTexture(title, blurb, { reserveDelete = false, thumbs = 0, kind = "video" } = {}) {
   const c = document.createElement("canvas");
   c.width = 1024;
@@ -1039,13 +1086,23 @@ function createThumbsBadgeTexture(count) {
 function refreshNodeChrome(node) {
   if (!node?.label) return;
   const old = node.label.material.map;
-  node.label.material.map = createLabelTexture(node.title, node.blurb || "", {
-    reserveDelete: Boolean(node.deletable),
-    thumbs: node.thumbs || 0,
-    kind: node.kind || "video",
-  });
+  if (state.cameraLayout === "carousel") {
+    node.label.material.map = createCarouselLabelTexture(
+      node.title,
+      formatTakenLabel(node.takenAt)
+    );
+    node.label.visible = true;
+  } else {
+    node.label.material.map = createLabelTexture(node.title, node.blurb || "", {
+      reserveDelete: Boolean(node.deletable),
+      thumbs: node.thumbs || 0,
+      kind: node.kind || "video",
+    });
+    node.label.visible = node.kind !== "image";
+  }
   node.label.material.needsUpdate = true;
   old?.dispose?.();
+  syncLabelPlacement(node);
 
   const count = node.thumbs || 0;
   if (count > 0) {
@@ -1175,7 +1232,7 @@ function applyMediaAspect(node, width, height) {
   node.screen.geometry = new THREE.PlaneGeometry(finalW, finalH);
   node.frame.geometry.dispose();
   node.frame.geometry = new THREE.PlaneGeometry(finalW + 0.14, finalH + 0.14);
-  node.label.position.set(0, finalH * 0.5 + 0.55, 0.02);
+  syncLabelPlacement(node);
   node.beacon.position.set(0, -finalH * 0.5 - 0.35, 0.05);
   node.screen.position.y = 0;
   node.frame.position.y = 0;
@@ -1320,6 +1377,7 @@ function createNode(item, index) {
   if (node.lat != null) {
     node.group.visible = node.inRange;
   }
+  refreshNodeChrome(node);
 
   if (video) {
     const onMeta = () => applyVideoAspect(node);

@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=70" />
+    <link rel="stylesheet" href="styles.css?v=71" />
   </head>
   <body>
     <div id="app">
@@ -92,7 +92,7 @@
                 aria-expanded="false"
                 aria-controls="layout-sheet"
               >
-                <span id="layout-btn-value">In place</span>
+                <span id="layout-btn-value">Carousel</span>
               </button>
             </div>
             <div id="range-sheet" class="range-sheet" hidden>
@@ -181,16 +181,16 @@
                 <button
                   type="button"
                   id="layout-place"
-                  class="layout-choice is-on"
-                  aria-pressed="true"
+                  class="layout-choice"
+                  aria-pressed="false"
                 >
                   Actual locations
                 </button>
                 <button
                   type="button"
                   id="layout-carousel"
-                  class="layout-choice"
-                  aria-pressed="false"
+                  class="layout-choice is-on"
+                  aria-pressed="true"
                 >
                   Carousel
                 </button>
@@ -455,6 +455,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=70"></script>
+    <script type="module" src="app.js?v=71"></script>
   </body>
 </html>
