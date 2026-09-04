@@ -338,6 +338,11 @@ button {
   grid-template-columns: 1fr 1fr;
 }
 
+.layout-choices.is-pair .layout-choice {
+  padding: 0 0.45rem;
+  font-size: 0.78rem;
+}
+
 .layout-choice {
   min-height: 2.35rem;
   width: 100%;
