@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=92" />
+    <link rel="stylesheet" href="styles.css?v=93" />
   </head>
   <body>
     <div id="app">
@@ -326,6 +326,32 @@
               </button>
             </div>
           </section>
+
+          <section class="settings-block">
+            <p class="range-sheet-label" id="size-sheet-label">Video size</p>
+            <div
+              class="layout-choices is-pair"
+              role="group"
+              aria-labelledby="size-sheet-label"
+            >
+              <button
+                type="button"
+                id="video-size-large"
+                class="layout-choice is-on"
+                aria-pressed="true"
+              >
+                Large
+              </button>
+              <button
+                type="button"
+                id="video-size-small"
+                class="layout-choice"
+                aria-pressed="false"
+              >
+                Small · 2 rows
+              </button>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -432,6 +458,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=92"></script>
+    <script type="module" src="app.js?v=93"></script>
   </body>
 </html>

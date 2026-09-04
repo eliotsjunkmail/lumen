@@ -127,4 +127,36 @@ if (!(yearAlphas[1] > last2011 && yearAlphas[1] < first2014)) {
   throw new Error("2014 should sit between 2011 clips and 2014 clips");
 }
 
+function carouselPairColumns(nodes) {
+  const cols = [];
+  for (let i = 0; i < nodes.length; i += 2) {
+    cols.push(nodes.slice(i, i + 2));
+  }
+  return cols;
+}
+function stackedRowY(bottomH, topH, gap = 0.24, floor = 0.05) {
+  return {
+    bottom: floor + bottomH * 0.5,
+    top: floor + bottomH + gap + topH * 0.5,
+  };
+}
+const four = ["a", "b", "c", "d"];
+const pairs = carouselPairColumns(four);
+if (pairs.length !== 2 || pairs[0].join("|") !== "a|b" || pairs[1].join("|") !== "c|d") {
+  throw new Error("small size should pack clips into 2-high columns");
+}
+const odd = carouselPairColumns(["a", "b", "c"]);
+if (odd.length !== 2 || odd[1].join("|") !== "c") {
+  throw new Error("odd clip should sit alone in the last column");
+}
+const ys = stackedRowY(1.96, 1.96);
+if (!(ys.top > ys.bottom + 1.96)) {
+  throw new Error("top row should sit fully above the bottom row");
+}
+if (Math.abs(ys.bottom - 1.03) > 0.02) {
+  throw new Error("bottom row should rest on the floor");
+}
+const largeCols = four.map((id) => [id]);
+if (largeCols.length !== 4) throw new Error("large size stays one row");
+
 console.log("carousel-ring tests passed");

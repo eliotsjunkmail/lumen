@@ -334,6 +334,10 @@ button {
   gap: 0.4rem;
 }
 
+.layout-choices.is-pair {
+  grid-template-columns: 1fr 1fr;
+}
+
 .layout-choice {
   min-height: 2.35rem;
   width: 100%;

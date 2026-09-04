@@ -24,13 +24,17 @@ const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
 const CAROUSEL_MAX = VIEW_CLIP_COUNT;
 const CAROUSEL_GAP_M = 1.55;
+const CAROUSEL_GAP_SMALL_M = 0.9;
 const CAROUSEL_SCALE = 3;
+const CAROUSEL_SCALE_SMALL = 1.45;
 const CAROUSEL_FLOOR_Y = 0.05;
+const CAROUSEL_ROW_GAP_M = 0.24;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
 /** Horizontal FOV so 3× clips fill the lens without shrinking the ring. */
 const CAROUSEL_HFOV = 40;
+const CAROUSEL_HFOV_SMALL = 56;
 const CAROUSEL_FOV_MAX = 145;
 
 /** Stable anonymous id so users can delete their own shared pins. */
@@ -72,6 +76,8 @@ const timeSheetValue = document.getElementById("time-sheet-value");
 const timeFill = document.getElementById("time-fill");
 const layoutPlaceBtn = document.getElementById("layout-place");
 const layoutCarouselBtn = document.getElementById("layout-carousel");
+const videoSizeLargeBtn = document.getElementById("video-size-large");
+const videoSizeSmallBtn = document.getElementById("video-size-small");
 const settingsBtn = document.getElementById("settings-btn");
 const settingsModal = document.getElementById("settings-modal");
 const settingsClose = document.getElementById("settings-close");
@@ -181,6 +187,7 @@ const state = {
   timeMinYr: 0,
   timeMaxYr: TIME_RANGE_MAX_YR,
   cameraLayout: "carousel",
+  videoSize: "large",
   settingsOpen: false,
   carouselFwdX: null,
   carouselFwdZ: null,
@@ -701,7 +708,9 @@ function applyLayoutFov() {
     (window.innerHeight > 0 ? window.innerWidth / window.innerHeight : 0.5);
   if (state.cameraLayout === "carousel") {
     if (!state.fovPinched) {
-      const h = THREE.MathUtils.degToRad(CAROUSEL_HFOV);
+      const hFov =
+        state.videoSize === "small" ? CAROUSEL_HFOV_SMALL : CAROUSEL_HFOV;
+      const h = THREE.MathUtils.degToRad(hFov);
       camera.fov = THREE.MathUtils.radToDeg(
         2 * Math.atan(Math.tan(h * 0.5) / Math.max(0.2, aspect))
       );
@@ -738,6 +747,61 @@ function setCameraLayout(mode, { persist = true } = {}) {
   }
   updateGeoAnchors();
   for (const node of state.nodes) refreshNodeChrome(node);
+}
+
+function loadVideoSize() {
+  try {
+    const raw = localStorage.getItem("lumen-video-size");
+    if (raw === "small") return "small";
+  } catch {
+    /* private browsing */
+  }
+  return "large";
+}
+
+function syncVideoSizeControls() {
+  const small = state.videoSize === "small";
+  videoSizeLargeBtn?.classList.toggle("is-on", !small);
+  videoSizeSmallBtn?.classList.toggle("is-on", small);
+  videoSizeLargeBtn?.setAttribute("aria-pressed", String(!small));
+  videoSizeSmallBtn?.setAttribute("aria-pressed", String(small));
+}
+
+function setVideoSize(size, { persist = true } = {}) {
+  const next = size === "small" ? "small" : "large";
+  const changed = state.videoSize !== next;
+  state.videoSize = next;
+  if (changed) state.fovPinched = false;
+  applyLayoutFov();
+  syncVideoSizeControls();
+  if (persist) {
+    try {
+      localStorage.setItem("lumen-video-size", next);
+    } catch {
+      /* ignore */
+    }
+  }
+  updateGeoAnchors();
+}
+
+function carouselScale() {
+  return state.videoSize === "small" ? CAROUSEL_SCALE_SMALL : CAROUSEL_SCALE;
+}
+
+function carouselIsTwoRow() {
+  return state.cameraLayout === "carousel" && state.videoSize === "small";
+}
+
+function carouselNodeHeight(node) {
+  return (node.screen?.geometry?.parameters?.height || 1.35) * carouselScale();
+}
+
+function carouselPairColumns(nodes) {
+  const cols = [];
+  for (let i = 0; i < nodes.length; i += 2) {
+    cols.push(nodes.slice(i, i + 2));
+  }
+  return cols;
 }
 
 /** Birds, planes, and other airborne subjects sit in the sky instead of on the ground. */
@@ -855,10 +919,20 @@ function layoutCameraCarousel() {
   const { fx, fz, rx, rz } = carouselRingVectors();
   const originX = camera ? camera.position.x : 0;
   const originZ = camera ? camera.position.z : 0;
-  const widths = nearby.map((node) => carouselNodeWidth(node));
-  const { radius, angles } = carouselRingLayout(widths);
+  const twoRow = carouselIsTwoRow();
+  const columns = twoRow
+    ? carouselPairColumns(nearby)
+    : nearby.map((node) => [node]);
+  const widths = columns.map((col) =>
+    Math.max(...col.map((node) => carouselNodeWidth(node)))
+  );
+  const { radius, angles } = carouselRingLayout(
+    widths,
+    CAROUSEL_DIST_M,
+    twoRow ? CAROUSEL_GAP_SMALL_M : CAROUSEL_GAP_M
+  );
 
-  nearby.forEach((node, i) => {
+  columns.forEach((col, i) => {
     const p = pointOnCarouselRing(
       angles[i],
       radius,
@@ -869,11 +943,21 @@ function layoutCameraCarousel() {
       rx,
       rz
     );
-    node.anchorX = p.x;
-    node.anchorZ = p.z;
+    const bottom = col[0];
+    const top = col[1];
+    const hb = carouselNodeHeight(bottom);
+    bottom.anchorX = p.x;
+    bottom.anchorZ = p.z;
+    bottom.anchorY = CAROUSEL_FLOOR_Y + hb * 0.5;
+    if (top) {
+      const ht = carouselNodeHeight(top);
+      top.anchorX = p.x;
+      top.anchorZ = p.z;
+      top.anchorY = CAROUSEL_FLOOR_Y + hb + CAROUSEL_ROW_GAP_M + ht * 0.5;
+    }
   });
   syncCarouselYearMarks(
-    nearby,
+    columns.map((col) => col[0]),
     angles,
     radius,
     originX,
@@ -886,13 +970,14 @@ function layoutCameraCarousel() {
 }
 
 function carouselNodeWidth(node) {
-  const sw = (node.screen?.geometry?.parameters?.width || 1.65) * CAROUSEL_SCALE;
+  const scale = carouselScale();
+  const sw = (node.screen?.geometry?.parameters?.width || 1.65) * scale;
   const fw =
     node.kind === "video"
-      ? (node.frame?.geometry?.parameters?.width || sw / CAROUSEL_SCALE + 0.14) *
-        CAROUSEL_SCALE
+      ? (node.frame?.geometry?.parameters?.width || sw / scale + 0.14) *
+        scale
       : 0;
-  return Math.max(sw, fw, 1.15 * CAROUSEL_SCALE);
+  return Math.max(sw, fw, 1.15 * scale);
 }
 
 function carouselRingVectors() {
@@ -1843,9 +1928,8 @@ function updateNodes(t, dt) {
     if (node.anchorZ != null) node.group.position.z = node.anchorZ;
 
     if (carousel) {
-      const h =
-        (node.screen?.geometry?.parameters?.height || 1.35) * CAROUSEL_SCALE;
-      node.group.position.y = CAROUSEL_FLOOR_Y + h * 0.5;
+      const h = carouselNodeHeight(node);
+      node.group.position.y = node.anchorY ?? CAROUSEL_FLOOR_Y + h * 0.5;
       if (node.screen) node.screen.position.y = 0;
       if (node.frame) node.frame.position.y = 0;
       if (node.beacon) node.beacon.visible = false;
@@ -1895,14 +1979,14 @@ function updateNodes(t, dt) {
       const swayAmp = node.flying ? 0.055 : 0.028;
       const sway = carousel ? 0 : Math.sin(t * 2.4 + node.phase) * swayAmp;
       const breathe = carousel
-        ? CAROUSEL_SCALE
+        ? carouselScale()
         : 1 + Math.sin(t * 3.1 + node.phase) * (node.flying ? 0.04 : 0.02);
       node.screen.rotation.z = sway;
       node.screen.scale.setScalar(breathe);
     } else {
       node.frame.material.opacity = hot ? 0.55 : 0.16;
       node.screen.rotation.z = 0;
-      const viewScale = carousel ? CAROUSEL_SCALE : cameraVideoScale(node);
+      const viewScale = carousel ? carouselScale() : cameraVideoScale(node);
       node.screen.scale.set(viewScale, viewScale, 1);
       node.frame.scale.set(viewScale, viewScale, 1);
       node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
@@ -4564,6 +4648,8 @@ syncRangeControls();
 syncTimeControls();
 state.cameraLayout = loadCameraLayout();
 syncLayoutControls();
+state.videoSize = loadVideoSize();
+syncVideoSizeControls();
 
 settingsBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -4594,6 +4680,8 @@ timeMinSlider?.addEventListener("input", () => onTimeSliderInput("min"));
 timeMaxSlider?.addEventListener("input", () => onTimeSliderInput("max"));
 layoutPlaceBtn?.addEventListener("click", () => setCameraLayout("place"));
 layoutCarouselBtn?.addEventListener("click", () => setCameraLayout("carousel"));
+videoSizeLargeBtn?.addEventListener("click", () => setVideoSize("large"));
+videoSizeSmallBtn?.addEventListener("click", () => setVideoSize("small"));
 
 addBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
