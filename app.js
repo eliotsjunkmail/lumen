@@ -2529,23 +2529,27 @@ function orderCityGroups(groups, viewIds) {
 }
 
 function centerCityTagSelection(el) {
-  if (!el || el.hidden) return;
+  if (!el || el.hidden || !el.clientWidth) return;
   const selected = [...el.querySelectorAll(".city-tag.is-on")];
   if (!selected.length) {
     el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
     return;
   }
-  const first = selected[0];
-  const last = selected[selected.length - 1];
-  const mid = (first.offsetLeft + last.offsetLeft + last.offsetWidth) / 2;
+  const bar = el.getBoundingClientRect();
+  const first = selected[0].getBoundingClientRect();
+  const last = selected[selected.length - 1].getBoundingClientRect();
+  const clusterMid = (first.left + last.right) / 2;
+  const viewMid = bar.left + bar.width / 2;
   const max = Math.max(0, el.scrollWidth - el.clientWidth);
-  el.scrollLeft = Math.min(max, Math.max(0, mid - el.clientWidth / 2));
+  el.scrollLeft = Math.min(max, Math.max(0, el.scrollLeft + (clusterMid - viewMid)));
 }
 
 function scheduleCityTagCenter() {
   requestAnimationFrame(() => {
-    centerCityTagSelection(fieldTags);
-    centerCityTagSelection(mapTags);
+    requestAnimationFrame(() => {
+      centerCityTagSelection(fieldTags);
+      centerCityTagSelection(mapTags);
+    });
   });
 }
 
@@ -2617,23 +2621,53 @@ function isolateCityTagGestures(el) {
   if (!el || el.dataset.gesturesBound) return;
   el.dataset.gesturesBound = "1";
   let startX = 0;
-  const stop = (e) => {
-    e.stopPropagation();
-  };
+  let startScroll = 0;
+  let activeId = null;
+
   el.addEventListener("pointerdown", (e) => {
     e.stopPropagation();
+    if (e.button) return;
+    activeId = e.pointerId;
     startX = e.clientX;
+    startScroll = el.scrollLeft;
     cityTagDidPan = false;
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
   });
   el.addEventListener("pointermove", (e) => {
     e.stopPropagation();
-    if (Math.abs(e.clientX - startX) > 10) cityTagDidPan = true;
+    if (activeId !== e.pointerId) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 8) cityTagDidPan = true;
+    if (cityTagDidPan) el.scrollLeft = startScroll - dx;
   });
-  // Bubble phase so the pills still receive clicks; just keep the
-  // gesture from bubbling into the field and turning the carousel.
+  const endPointer = (e) => {
+    e.stopPropagation();
+    if (activeId !== e.pointerId) return;
+    activeId = null;
+    try {
+      el.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+  el.addEventListener("pointerup", endPointer);
+  el.addEventListener("pointercancel", endPointer);
+  el.addEventListener(
+    "wheel",
+    (e) => {
+      e.stopPropagation();
+      const delta = e.deltaX || e.deltaY;
+      if (!delta) return;
+      el.scrollLeft += delta;
+      e.preventDefault();
+    },
+    { passive: false }
+  );
   for (const type of [
-    "pointerup",
-    "pointercancel",
     "mousedown",
     "mousemove",
     "mouseup",
@@ -2641,9 +2675,8 @@ function isolateCityTagGestures(el) {
     "touchmove",
     "touchend",
     "touchcancel",
-    "wheel",
   ]) {
-    el.addEventListener(type, stop, { passive: true });
+    el.addEventListener(type, (e) => e.stopPropagation(), { passive: true });
   }
 }
 
