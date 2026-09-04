@@ -1,5 +1,5 @@
 const CAROUSEL_DIST_M = 6.2;
-const CAROUSEL_GAP_M = 1.25;
+const CAROUSEL_GAP_M = 1.55;
 
 function carouselChordAngle(width, radius) {
   const half = Math.max(0, width) * 0.5;
@@ -11,7 +11,7 @@ function carouselRingLayout(widths, distM = CAROUSEL_DIST_M, gapM = CAROUSEL_GAP
   const n = widths.length;
   if (!n) return { radius: distM, angles: [] };
 
-  const packed = widths.map((w) => Math.max(0.4, w * 1.12));
+  const packed = widths.map((w) => Math.max(0.4, w * 1.18));
   let radius = Math.max(0.5, distM, Math.max(...packed) * 0.55);
   let itemAng = [];
   let gapAng = 0;
