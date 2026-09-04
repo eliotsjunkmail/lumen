@@ -37,7 +37,8 @@ const many = Array.from({ length: 30 }, (_, i) => ({
   lng: -74.0,
 }));
 if (closest(many, user, 10).length !== 10) throw new Error("radar 10");
-if (closest(many, user, 20).length !== 20) throw new Error("view 20");
+if (closest(many, user, 20).length !== 20) throw new Error("camera 20");
+if (closest(many, user).length !== 30) throw new Error("map pins all");
 if (closest(many, user, 10)[0] !== "n0") throw new Error("closest first");
 
 const portland = { lat: 43.66, lng: -70.25 };
@@ -49,8 +50,8 @@ if (atNyc[0] === atPortland[0]) {
 if (atPortland[0] !== "portland") {
   throw new Error(`portland origin should pick portland first — got ${atPortland[0]}`);
 }
-if (JSON.stringify(atNyc.slice(0, 20)) !== JSON.stringify(closest(nodes, user, 20))) {
-  throw new Error("camera and map must share the same closest 20");
+if (JSON.stringify(atNyc) !== JSON.stringify(closest(nodes, user, 20))) {
+  throw new Error("camera and list must share the same closest 20");
 }
 
 const at4ft = cameraScale(1.22);

@@ -19,7 +19,7 @@ const FEET_PER_MILE = 5280;
 const RADAR_DOT_COUNT = 10;
 const VIEW_CLIP_COUNT = 20;
 const MAP_SUPPORT_NEARBY =
-  "Closest 20 to the map center · pinch to zoom, drag to pan.";
+  "All pins · list is the closest 20 to the map center.";
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
@@ -2106,7 +2106,7 @@ function clearMapClusterSelection() {
 function syncLeafletMarkers() {
   if (!state.leafletMap || !window.L) return;
   const L = window.L;
-  const geoNodes = viewClipNodes();
+  const geoNodes = allGeoNodes();
   const clusters = clusterMapNodes(geoNodes);
   const liveIds = new Set(clusters.map((c) => c.id));
 
@@ -2464,7 +2464,7 @@ function refreshMapList() {
 
   let sourceNodes = viewClipNodes();
   if (state.selectedClusterId) {
-    const cluster = clusterMapNodes(sourceNodes).find(
+    const cluster = clusterMapNodes(allGeoNodes()).find(
       (c) => c.id === state.selectedClusterId
     );
     sourceNodes = cluster ? cluster.nodes : viewClipNodes();
