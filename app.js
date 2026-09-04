@@ -9,7 +9,6 @@ import {
   posterUrl,
 } from "./cloud.js";
 import { readVideoCaptureMeta, formatTakenLabel } from "./video-meta.js";
-import { coverFlowSlots } from "./cover-flow.js";
 import { formatTownName } from "./place-name.js";
 import {
   distanceMeters,
@@ -146,10 +145,6 @@ const nameFile = document.getElementById("name-file");
 const nameHint = document.getElementById("name-hint");
 const nameSubmit = document.getElementById("name-submit");
 const nameCancel = document.getElementById("name-cancel");
-const gatePreview = document.getElementById("gate-preview");
-const gateCarousel = document.getElementById("gate-carousel");
-let gateSpots = [];
-let pendingGateClipId = null;
 const radar = document.getElementById("radar");
 const fieldLocate = document.getElementById("field-locate");
 const mapModal = document.getElementById("map-modal");
@@ -289,72 +284,6 @@ function setLocationUi() {
   /* Gate no longer shows a location chip. */
 }
 
-function renderGateCarousel(slots) {
-  if (!gatePreview || !gateCarousel) return;
-  if (!slots?.center) {
-    gatePreview.hidden = true;
-    gateCarousel.replaceChildren();
-    return;
-  }
-
-  gatePreview.hidden = false;
-  gateCarousel.replaceChildren();
-  for (const [slot, spot] of [
-    ["left", slots.left],
-    ["center", slots.center],
-    ["right", slots.right],
-  ]) {
-    if (!spot) continue;
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = `gate-card is-${slot}`;
-    card.setAttribute(
-      "aria-label",
-      `Open lens on ${spot.title || "nearby clip"}`
-    );
-    const img = document.createElement("img");
-    img.src = posterUrl(spot.video_path);
-    img.alt = "";
-    img.draggable = false;
-    card.append(img);
-    card.addEventListener("click", () => enterFieldFromGate(spot));
-    gateCarousel.append(card);
-  }
-}
-
-function refreshGatePreview() {
-  renderGateCarousel(
-    coverFlowSlots(gateSpots, state.userGeo || state.originGeo, distanceMeters)
-  );
-}
-
-function enterFieldFromGate(spot) {
-  pendingGateClipId = spot?.id || null;
-  enterField();
-}
-
-function focusPendingGateClip() {
-  const id = pendingGateClipId;
-  if (!id) return;
-  const node = state.nodes.find(
-    (n) => n.cloudId === id || n.id === `spot-${id}`
-  );
-  if (!node) return;
-  pendingGateClipId = null;
-  openFieldOnClip(node);
-}
-
-async function initGatePreview() {
-  if (!cloudConfigured()) return;
-  try {
-    gateSpots = await loadSpots();
-  } catch (err) {
-    console.warn(err);
-    return;
-  }
-  refreshGatePreview();
-}
-
 async function requestLocationAccess({ interactive = false } = {}) {
   if (!navigator.geolocation) {
     setLocationUi("denied", "This phone doesn’t support location.");
@@ -379,7 +308,6 @@ async function requestLocationAccess({ interactive = false } = {}) {
     updateGeoAnchors();
     syncLocateButtons();
     setLocationUi("ready");
-    refreshGatePreview();
     return geo;
   } catch (err) {
     console.warn(err);
@@ -426,7 +354,6 @@ async function initLocationOnLoad() {
 }
 
 initLocationOnLoad();
-initGatePreview();
 
 function startGeoWatch() {
   if (!navigator.geolocation || state.geoWatchId != null) return;
@@ -4044,7 +3971,6 @@ async function syncSharedSpots() {
   }
   await Promise.all(state.nodes.map((n) => waitForNodePoster(n)));
   setAddMediaLoading(false);
-  focusPendingGateClip();
 }
 
 async function enterField() {
