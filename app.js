@@ -710,6 +710,16 @@ function captureCarouselHeading() {
   state.carouselFwdZ = f.z;
 }
 
+/** Put the current town's carousel in front of wherever the phone is aimed. */
+function centerCarouselInView() {
+  if (state.cameraLayout !== "carousel") return;
+  captureCarouselHeading();
+  state.carouselDragY = 0;
+  state.carouselTiltT = 0;
+  state.carouselPitchBaseline = null;
+  state.carouselLookPitch = 0;
+}
+
 function applyLayoutFov() {
   if (!camera) return;
   const aspect =
@@ -2859,7 +2869,8 @@ function selectTown(name, { fromUser = false } = {}) {
   const next = formatTownName(name);
   if (!next) return;
   if (fromUser) state.townFollowsUser = next === FALLBACK_TOWN;
-  if (state.selectedTown === next) {
+  const same = state.selectedTown === next;
+  if (same && !fromUser) {
     syncTownDropdown();
     return;
   }
@@ -2867,6 +2878,7 @@ function selectTown(name, { fromUser = false } = {}) {
   state.mapExpandedTown = next;
   state.mapTownCollapsed = false;
   townSelectSig = "";
+  if (fromUser) centerCarouselInView();
   syncTownDropdown();
   updateGeoAnchors();
   if (state.mapOpen) {

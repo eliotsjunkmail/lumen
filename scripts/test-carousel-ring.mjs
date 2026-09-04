@@ -176,4 +176,35 @@ if (Math.abs(ys.bottom - 1.03) > 0.02) {
 const largeCols = four.map((id) => [id]);
 if (largeCols.length !== 4) throw new Error("large size stays one row");
 
+function clipsOnHeading(widths, fx, fz) {
+  const { radius, angles } = carouselRingLayout(widths);
+  const len = Math.hypot(fx, fz) || 1;
+  fx /= len;
+  fz /= len;
+  return angles.map((a) =>
+    pointOnCarouselRing(a, radius, 0, 0, fx, fz, -fz, fx)
+  );
+}
+
+const lookingRight = clipsOnHeading([1.65], 1, 0);
+if (Math.abs(lookingRight[0].x - lookingRight[0].radius) > 0.8 && Math.abs(lookingRight[0].x) < 4) {
+  // single clip should sit on +X when heading is +X
+}
+if (Math.abs(lookingRight[0].x - 6.2) > 0.8) {
+  throw new Error(
+    `town carousel should sit on the new heading, got x=${lookingRight[0].x.toFixed(2)}`
+  );
+}
+if (Math.abs(lookingRight[0].z) > 0.4) {
+  throw new Error("single column must not drift off the new heading");
+}
+
+const lookingForward = clipsOnHeading([1.65], 0, -1);
+if (Math.abs(lookingForward[0].z + 6.2) > 0.8) {
+  throw new Error("re-aiming should move the carousel in front of the new look");
+}
+if (Math.abs(lookingForward[0].x) > 0.4) {
+  throw new Error("centered town carousel should not sit off to the side");
+}
+
 console.log("carousel-ring tests passed");
