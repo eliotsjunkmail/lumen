@@ -858,7 +858,7 @@ button {
 }
 
 .aim {
-  top: 61%;
+  top: 46%;
   left: 50%;
   width: 72px;
   height: 72px;
@@ -911,7 +911,7 @@ button {
 .field-loading {
   position: absolute;
   left: 50%;
-  top: 61%;
+  top: 46%;
   z-index: 4;
   display: grid;
   justify-items: center;
