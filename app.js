@@ -144,12 +144,8 @@ const nameFile = document.getElementById("name-file");
 const nameHint = document.getElementById("name-hint");
 const nameSubmit = document.getElementById("name-submit");
 const nameCancel = document.getElementById("name-cancel");
-const locationPrompt = document.getElementById("location-prompt");
-const locationCopy = document.getElementById("location-copy");
-const locationBtn = document.getElementById("location-btn");
 const gatePreview = document.getElementById("gate-preview");
 const gateCarousel = document.getElementById("gate-carousel");
-const LOCATION_READY_HTML = 'Location <span class="location-on">ON</span>';
 let gateSpots = [];
 let pendingGateClipId = null;
 const radar = document.getElementById("radar");
@@ -286,22 +282,8 @@ function readGps() {
   });
 }
 
-function setLocationUi(kind, message) {
-  if (!locationPrompt) return;
-  locationPrompt.classList.remove("is-ready", "is-denied");
-  if (kind === "ready") locationPrompt.classList.add("is-ready");
-  if (kind === "denied") locationPrompt.classList.add("is-denied");
-  if (locationCopy) {
-    if (kind === "ready") locationCopy.innerHTML = LOCATION_READY_HTML;
-    else locationCopy.textContent = message;
-  }
-  if (locationBtn) {
-    locationBtn.disabled = kind === "ready" || kind === "pending";
-    if (kind === "pending") locationBtn.textContent = "Checking…";
-    else if (kind === "denied") locationBtn.textContent = "Try again";
-    else if (kind === "ready") locationBtn.textContent = "Location ON";
-    else locationBtn.textContent = "Enable location";
-  }
+function setLocationUi() {
+  /* Gate no longer shows a location chip. */
 }
 
 function renderGateCarousel(slots) {
@@ -439,10 +421,6 @@ async function initLocationOnLoad() {
   // Attempt immediately on load; many mobile browsers will show the system prompt.
   await requestLocationAccess({ interactive: false });
 }
-
-locationBtn?.addEventListener("click", () => {
-  requestLocationAccess({ interactive: true });
-});
 
 initLocationOnLoad();
 initGatePreview();
