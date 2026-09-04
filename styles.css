@@ -1537,7 +1537,32 @@ button {
 }
 
 .name-submit {
-  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3.2rem;
+  padding: 0 1.2rem;
+  border: 0;
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.name-submit::after {
+  content: none;
+}
+
+.name-submit:hover {
+  background: #f3f3f3;
+}
+
+.name-submit:active {
+  transform: scale(0.97);
+  background: #fff;
 }
 
 .name-hint {
