@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=58" />
+    <link rel="stylesheet" href="styles.css?v=59" />
   </head>
   <body>
     <div id="app">
@@ -67,7 +67,35 @@
 
         <header class="hud-top">
           <p class="hud-brand">Lumen</p>
-          <p class="hud-hint" id="hud-hint">Look around to find videos</p>
+          <div class="range-wrap">
+            <button
+              type="button"
+              id="range-btn"
+              class="range-btn"
+              aria-expanded="false"
+              aria-controls="range-sheet"
+            >
+              Within <span id="range-btn-value">100</span> ft
+            </button>
+            <div id="range-sheet" class="range-sheet" hidden>
+              <label class="range-sheet-label" for="range-slider">Show clips up to</label>
+              <div class="range-sheet-row">
+                <span>25</span>
+                <input
+                  id="range-slider"
+                  type="range"
+                  min="25"
+                  max="1000"
+                  step="25"
+                  value="100"
+                />
+                <span>1,000</span>
+              </div>
+              <p class="range-sheet-value">
+                <span id="range-sheet-value">100</span> feet
+              </p>
+            </div>
+          </div>
         </header>
 
         <button
@@ -326,6 +354,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=58"></script>
+    <script type="module" src="app.js?v=59"></script>
   </body>
 </html>

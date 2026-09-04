@@ -9,8 +9,10 @@ import {
 } from "./cloud.js";
 import { readVideoCaptureMeta, formatTakenLabel } from "./video-meta.js";
 
-const GEO_RANGE_FT = 25;
-const GEO_RANGE_M = GEO_RANGE_FT * 0.3048;
+const CAMERA_RANGE_MIN_FT = 25;
+const CAMERA_RANGE_MAX_FT = 1000;
+const CAMERA_RANGE_DEFAULT_FT = 100;
+const CAMERA_RANGE_STEP_FT = 25;
 const MAP_RANGE_FT = 150;
 const MAP_RANGE_M = MAP_RANGE_FT * 0.3048;
 const CAMERA_SPREAD_M = 2.05;
@@ -47,7 +49,11 @@ const field = document.getElementById("field");
 const enterBtn = document.getElementById("enter-btn");
 const camEl = document.getElementById("cam");
 const canvas = document.getElementById("stage");
-const hudHint = document.getElementById("hud-hint");
+const rangeBtn = document.getElementById("range-btn");
+const rangeBtnValue = document.getElementById("range-btn-value");
+const rangeSheet = document.getElementById("range-sheet");
+const rangeSlider = document.getElementById("range-slider");
+const rangeSheetValue = document.getElementById("range-sheet-value");
 const focusLabel = document.getElementById("focus-label");
 const watchBtn = document.getElementById("watch-btn");
 const statusEl = document.getElementById("status");
@@ -142,6 +148,8 @@ const state = {
   orientReady: false,
   northAligned: false,
   theaterAnimId: null,
+  cameraRangeFt: CAMERA_RANGE_DEFAULT_FT,
+  rangeOpen: false,
 };
 
 let renderer;
@@ -427,8 +435,63 @@ function placementAlongLook(distance = 3.2, y = 1.4) {
   ];
 }
 
-function defaultHudHint() {
-  return "Within 25 ft, aim from any direction";
+function clampCameraRangeFt(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return CAMERA_RANGE_DEFAULT_FT;
+  const stepped = Math.round(n / CAMERA_RANGE_STEP_FT) * CAMERA_RANGE_STEP_FT;
+  return Math.min(CAMERA_RANGE_MAX_FT, Math.max(CAMERA_RANGE_MIN_FT, stepped));
+}
+
+function loadCameraRangeFt() {
+  try {
+    const raw = localStorage.getItem("lumen-camera-range-ft");
+    if (raw != null && raw !== "") return clampCameraRangeFt(raw);
+  } catch {
+    /* private browsing */
+  }
+  return CAMERA_RANGE_DEFAULT_FT;
+}
+
+function geoRangeM() {
+  return state.cameraRangeFt * 0.3048;
+}
+
+function formatRangeFt(ft) {
+  return Number(ft).toLocaleString("en-US");
+}
+
+function syncRangeControls() {
+  const ft = state.cameraRangeFt;
+  if (rangeBtnValue) rangeBtnValue.textContent = formatRangeFt(ft);
+  if (rangeSheetValue) rangeSheetValue.textContent = formatRangeFt(ft);
+  if (rangeSlider) rangeSlider.value = String(ft);
+}
+
+function setCameraRangeFt(value, { persist = true } = {}) {
+  state.cameraRangeFt = clampCameraRangeFt(value);
+  syncRangeControls();
+  if (persist) {
+    try {
+      localStorage.setItem("lumen-camera-range-ft", String(state.cameraRangeFt));
+    } catch {
+      /* ignore */
+    }
+  }
+  updateGeoAnchors();
+}
+
+function openRangeSheet() {
+  if (!rangeSheet || !rangeBtn) return;
+  state.rangeOpen = true;
+  rangeSheet.hidden = false;
+  rangeBtn.setAttribute("aria-expanded", "true");
+}
+
+function closeRangeSheet() {
+  if (!rangeSheet || !rangeBtn) return;
+  state.rangeOpen = false;
+  rangeSheet.hidden = true;
+  rangeBtn.setAttribute("aria-expanded", "false");
 }
 
 /** Birds, planes, and other airborne subjects sit in the sky instead of on the ground. */
@@ -537,7 +600,7 @@ function updateGeoAnchors() {
 
     const dist = distanceMeters(user.lat, user.lng, node.lat, node.lng);
     node.distanceM = dist;
-    const inRange = dist <= GEO_RANGE_M;
+    const inRange = dist <= geoRangeM();
     node.inRange = inRange;
     node.group.visible = inRange;
     if (node.radar) node.radar.style.display = inRange ? "" : "none";
@@ -560,8 +623,6 @@ function updateGeoAnchors() {
         ? `${feet} ft · ${taken}`
         : `${feet} ft · aim from any side`
       : `Out of range (${feet} ft)`;
-    if (state.focused === node) hudHint.textContent = node.blurb;
-
     if (!inRange && state.focused === node) setFocus(null);
   }
 
@@ -1251,7 +1312,7 @@ function isNodeInView(node) {
   camera.getWorldDirection(_forward);
   _to.copy(node.group.position).sub(camera.position);
   const dist = _to.length();
-  if (dist < 0.35 || dist > GEO_RANGE_M + 4) return false;
+  if (dist < 0.35 || dist > geoRangeM() + 4) return false;
   _to.normalize();
   const ang = Math.acos(THREE.MathUtils.clamp(_forward.dot(_to), -1, 1));
   // Same aim cone as lock-on — only then count as "in view"
@@ -1274,7 +1335,7 @@ function updateRadar() {
     const right = dx * cos - dz * sin;
     const forward = dx * sin + dz * cos;
     const dist = Math.hypot(right, forward) || 1;
-    const clamped = Math.min(dist / 6.5, 1);
+    const clamped = Math.min(dist / Math.max(geoRangeM(), 6.5), 1);
     const x = center - (right / dist) * radius * clamped;
     const y = center - (forward / dist) * radius * clamped;
     node.radar.style.left = `${x}px`;
@@ -1769,6 +1830,7 @@ function updateMapView() {
 
 async function openMapModal() {
   if (!mapModal || state.watching) return;
+  closeRangeSheet();
   state.mapOpen = true;
   mapModal.hidden = false;
   refreshMapList();
@@ -1890,7 +1952,7 @@ function pickCenter() {
   camera.getWorldDirection(_forward);
   let best = null;
   let bestScore = Infinity;
-  const maxDist = GEO_RANGE_M + 4;
+  const maxDist = geoRangeM() + 4;
 
   for (const node of state.nodes) {
     if (!node.group.visible) continue;
@@ -1917,14 +1979,12 @@ function setFocus(node) {
     focusLabel.textContent = node.thumbs
       ? `${node.title} 👍${node.thumbs > 1 ? node.thumbs : ""}`
       : node.title;
-    hudHint.textContent = node.blurb || "Aim locked";
     watchBtn.disabled = false;
     watchBtn.textContent = node.kind === "image" ? "View" : "Watch";
     ensurePreview(node);
     pausePreviews(node.id);
   } else {
     focusLabel.textContent = "Scan the field";
-    hudHint.textContent = defaultHudHint();
     // Keep Watch tappable so we can prompt to aim (disabled buttons eat taps on iOS)
     watchBtn.disabled = false;
     watchBtn.textContent = "Watch";
@@ -1939,6 +1999,7 @@ function openTheater(node, opts = {}) {
   closeMapModal();
   closeConfirmModal();
   closeAddModal();
+  closeRangeSheet();
   state.watching = true;
   state.watchingNode = node;
   state.theaterFromMap = fromMap;
@@ -3244,6 +3305,7 @@ function closeAddModal() {
 function openAddModal() {
   if (!addModal) return;
   if (state.watching || state.naming) return;
+  closeRangeSheet();
   closeCreateModal(true);
   addModal.hidden = false;
 }
@@ -3375,6 +3437,22 @@ videoInputGate?.addEventListener("change", onPickVideos);
 videoInputField?.addEventListener("change", onPickVideos);
 videoInputCapture?.addEventListener("change", onPickVideos);
 
+state.cameraRangeFt = loadCameraRangeFt();
+syncRangeControls();
+
+rangeBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (state.rangeOpen) closeRangeSheet();
+  else openRangeSheet();
+});
+rangeSlider?.addEventListener("input", () => {
+  setCameraRangeFt(rangeSlider.value);
+});
+rangeSheet?.addEventListener("click", (e) => e.stopPropagation());
+document.addEventListener("click", () => {
+  if (state.rangeOpen) closeRangeSheet();
+});
+
 addBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
   openAddModal();
@@ -3442,6 +3520,10 @@ createForm?.addEventListener("submit", async (e) => {
 // Desktop keyboard nudge
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
+    if (state.rangeOpen) {
+      closeRangeSheet();
+      return;
+    }
     if (uploadOverlay && !uploadOverlay.hidden) return;
     if (confirmModal && !confirmModal.hidden) {
       closeConfirmModal();

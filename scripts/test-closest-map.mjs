@@ -65,4 +65,15 @@ if (!inside.includes("here") || !inside.includes("near") || inside.includes("far
   throw new Error(`150 ft filter failed: ${inside}`);
 }
 
+function clampRange(value, min = 25, max = 1000, step = 25) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 100;
+  const stepped = Math.round(n / step) * step;
+  return Math.min(max, Math.max(min, stepped));
+}
+if (clampRange(100) !== 100) throw new Error("default 100");
+if (clampRange(12) !== 25) throw new Error("min 25");
+if (clampRange(5000) !== 1000) throw new Error("max 1000");
+if (clampRange(87) !== 75) throw new Error("step 25");
+
 console.log("closest-map tests passed");
