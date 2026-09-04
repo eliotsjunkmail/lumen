@@ -281,7 +281,7 @@ async function requestLocationAccess({ interactive = false } = {}) {
     updateGeoAnchors();
     setLocationUi(
       "ready",
-      "Location on — pins work within 25 feet of where you stand."
+      "Location on."
     );
     return geo;
   } catch (err) {
@@ -322,7 +322,7 @@ async function initLocationOnLoad() {
 
   setLocationUi(
     "ask",
-    "Lumen needs your location to pin videos within 25 feet."
+    "Turn on location to pin clips."
   );
   // Attempt immediately on load; many mobile browsers will show the system prompt.
   await requestLocationAccess({ interactive: false });
