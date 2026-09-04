@@ -293,7 +293,7 @@ button {
 .range-links {
   display: grid;
   justify-items: end;
-  gap: 0.05rem;
+  gap: 0.12rem;
 }
 
 .range-btn {
@@ -524,7 +524,7 @@ button {
 }
 
 .radar {
-  top: calc(92px + var(--safe-top));
+  top: calc(124px + var(--safe-top));
   right: 16px;
   width: 84px;
   height: 84px;
