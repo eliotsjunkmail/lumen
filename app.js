@@ -23,12 +23,29 @@ import {
   carouselDragLiftDelta,
   carouselRelativePitch,
 } from "./carousel-tilt.js";
+import {
+  hashSeed,
+  makeVintageFrameCanvas,
+  vintageFrameDataUrl,
+} from "./vintage-border.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
 const CAMERA_RANGE_MAX_FT = 10 * 5280;
 const CAMERA_RANGE_DEFAULT_FT = 100;
 const FALLBACK_TOWN = "Nearby";
 const CAMERA_RANGE_SLIDER_MAX = 1000;
+
+function installVintageCssFrame() {
+  try {
+    document.documentElement.style.setProperty(
+      "--vintage-frame",
+      `url("${vintageFrameDataUrl(640, 640, 42)}")`
+    );
+  } catch {
+    /* ignore */
+  }
+}
+installVintageCssFrame();
 const TIME_RANGE_MAX_YR = 20;
 const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 const FEET_PER_MILE = 5280;
@@ -1609,7 +1626,7 @@ function applyMediaAspect(node, width, height) {
   node.screen.geometry.dispose();
   node.screen.geometry = new THREE.PlaneGeometry(finalW, finalH);
   node.frame.geometry.dispose();
-  node.frame.geometry = new THREE.PlaneGeometry(finalW + 0.14, finalH + 0.14);
+  node.frame.geometry = new THREE.PlaneGeometry(finalW, finalH);
   syncLabelPlacement(node);
   node.beacon.position.set(0, -finalH * 0.5 - 0.35, 0.05);
   node.screen.position.y = 0;
@@ -1618,6 +1635,7 @@ function applyMediaAspect(node, width, height) {
     node.thumbsBadge.position.set(finalW * 0.42, finalH * 0.38, 0.04);
   }
   syncCreationStand(node);
+  applyVintageFrame(node);
 }
 
 function applyVideoAspect(node) {
@@ -1636,6 +1654,38 @@ function makePlaceholderTexture() {
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+function applyVintageFrame(node) {
+  if (!node?.frame || !node.screen) return;
+  const gw = node.screen.geometry.parameters.width || 2.4;
+  const gh = node.screen.geometry.parameters.height || 1.35;
+  const key = `${gw.toFixed(3)}x${gh.toFixed(3)}`;
+  if (node.vintageKey === key && node.frame.material.map) {
+    node.frame.visible = true;
+    return;
+  }
+  const long = 768;
+  const tw = gw >= gh ? long : Math.max(48, Math.round(long * (gw / gh)));
+  const th = gh >= gw ? long : Math.max(48, Math.round(long * (gh / gw)));
+  const canvas = makeVintageFrameCanvas(
+    tw,
+    th,
+    hashSeed(node.id || node.cloudId || node.title || "clip")
+  );
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  node.frame.material.map?.dispose();
+  node.frame.material.map = tex;
+  node.frame.material.color.set(0xffffff);
+  node.frame.material.transparent = true;
+  node.frame.material.opacity = 1;
+  node.frame.material.depthWrite = false;
+  node.frame.material.alphaTest = 0.04;
+  node.frame.material.needsUpdate = true;
+  node.frame.visible = true;
+  node.vintageKey = key;
 }
 
 function videoPosterSrc(node) {
@@ -1735,18 +1785,16 @@ function createNode(item, index) {
   screen.userData.hit = true;
 
   const frame = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.56, 1.51),
+    new THREE.PlaneGeometry(2.4, 1.35),
     new THREE.MeshBasicMaterial({
-      color: 0xffffff,
       transparent: true,
-      opacity: kind === "image" ? 0 : 0.18,
-      depthWrite: true,
+      opacity: 1,
+      depthWrite: false,
       side: THREE.DoubleSide,
     })
   );
-  frame.position.z = -0.01;
+  frame.position.z = 0.012;
   frame.position.y = 0.2;
-  frame.visible = kind !== "image";
 
   const label = new THREE.Mesh(
     new THREE.PlaneGeometry(2.2, 0.55),
@@ -1862,6 +1910,7 @@ function createNode(item, index) {
   }
 
   if (node.thumbs > 0) refreshNodeChrome(node);
+  applyVintageFrame(node);
 
   return node;
 }
@@ -1896,6 +1945,7 @@ function disposeNode(node) {
   node.label.geometry.dispose();
   node.beacon.geometry.dispose();
   node.screen.material.dispose();
+  node.frame.material.map?.dispose();
   node.frame.material.dispose();
   node.label.material.map?.dispose();
   node.label.material.dispose();
@@ -2111,8 +2161,6 @@ function updateNodes(t, dt) {
 
     const hot = state.focused === node;
     if (node.kind === "image") {
-      node.frame.visible = false;
-      // Flipbook + idle sway so creations feel alive
       if (node.animFrames?.length > 1 && node.animCtx) {
         const fps = 7;
         const idx = Math.floor(t * fps) % node.animFrames.length;
@@ -2133,12 +2181,19 @@ function updateNodes(t, dt) {
         : 1 + Math.sin(t * 3.1 + node.phase) * (node.flying ? 0.04 : 0.02);
       node.screen.rotation.z = sway;
       node.screen.scale.setScalar(breathe);
+      if (node.frame) {
+        node.frame.visible = true;
+        node.frame.rotation.z = sway;
+        node.frame.scale.copy(node.screen.scale);
+      }
     } else {
-      node.frame.material.opacity = hot ? 0.55 : 0.16;
       node.screen.rotation.z = 0;
       const viewScale = carousel ? carouselScale() : cameraVideoScale(node);
       node.screen.scale.set(viewScale, viewScale, 1);
-      node.frame.scale.set(viewScale, viewScale, 1);
+      if (node.frame) {
+        node.frame.visible = true;
+        node.frame.scale.set(viewScale, viewScale, 1);
+      }
       node.beacon.material.color.set(hot ? 0xffffff : 0x9ec4c8);
     }
 
