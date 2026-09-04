@@ -22,12 +22,13 @@ const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 3.2;
 const CAROUSEL_MAX = 12;
-const CAROUSEL_GAP_M = 0.32;
+const CAROUSEL_GAP_M = 0.96;
+const CAROUSEL_SCALE = 3;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
-/** Horizontal FOV in carousel so side clips wrap around a portrait view. */
-const CAROUSEL_HFOV = 100;
+/** Horizontal FOV so 3× clips fill the lens after the ring grows to fit. */
+const CAROUSEL_HFOV = 34;
 const CAROUSEL_FOV_MAX = 145;
 
 /** Stable anonymous id so users can delete their own shared pins. */
@@ -693,6 +694,7 @@ function setCameraLayout(mode, { persist = true } = {}) {
     hideCarouselYearMarks();
   } else if (changed || state.carouselFwdX == null) {
     captureCarouselHeading();
+    guide?.classList.remove("is-on");
   }
   if (changed) state.fovPinched = false;
   applyLayoutFov();
@@ -860,12 +862,13 @@ function layoutCameraCarousel() {
 }
 
 function carouselNodeWidth(node) {
-  const sw = node.screen?.geometry?.parameters?.width || 1.65;
+  const sw = (node.screen?.geometry?.parameters?.width || 1.65) * CAROUSEL_SCALE;
   const fw =
     node.kind === "video"
-      ? node.frame?.geometry?.parameters?.width || sw + 0.14
+      ? (node.frame?.geometry?.parameters?.width || sw / CAROUSEL_SCALE + 0.14) *
+        CAROUSEL_SCALE
       : 0;
-  return Math.max(sw, fw, 1.15);
+  return Math.max(sw, fw, 1.15 * CAROUSEL_SCALE);
 }
 
 function carouselRingVectors() {
@@ -1018,11 +1021,13 @@ function syncCarouselYearMarks(
     const aFirst = angles[group.indices[0]];
     const aLast = angles[group.indices[group.indices.length - 1]];
     const alpha = (aFirst + aLast) * 0.5;
-    let minBottom = 0.7;
+    const carouselY = camera ? camera.position.y : 1.4;
+    let minBottom = carouselY;
     for (const idx of group.indices) {
       const node = nearby[idx];
-      const h = node.screen?.geometry?.parameters?.height || 1.35;
-      const bottom = (node.baseY || 1.4) - h * 0.5;
+      const h =
+        (node.screen?.geometry?.parameters?.height || 1.35) * CAROUSEL_SCALE;
+      const bottom = carouselY - h * 0.5;
       if (bottom < minBottom) minBottom = bottom;
     }
     const p = pointOnCarouselRing(
@@ -1035,7 +1040,8 @@ function syncCarouselYearMarks(
       rx,
       rz
     );
-    mark.position.set(p.x, minBottom - 0.48, p.z);
+    mark.position.set(p.x, minBottom - 0.36 * CAROUSEL_SCALE, p.z);
+    mark.scale.setScalar(2.2);
     _groundEuler.set(0, yawTowardOrigin(p.x, p.z, originX, originZ), 0, "YXZ");
     mark.quaternion.setFromEuler(_groundEuler);
     if (mark.userData.year !== group.year) {
@@ -1751,8 +1757,9 @@ function setDeviceQuaternion(alphaDeg, betaDeg, gammaDeg, compassDeg) {
 }
 
 function updateCameraRig(dt) {
+  const pitch = state.cameraLayout === "carousel" ? 0 : state.offsetPitch;
   _offsetQuat.setFromEuler(
-    new THREE.Euler(state.offsetPitch, state.offsetYaw, 0, "YXZ")
+    new THREE.Euler(pitch, state.offsetYaw, 0, "YXZ")
   );
 
   if (state.orientReady) {
@@ -1761,6 +1768,14 @@ function updateCameraRig(dt) {
   } else {
     // Desktop / no gyro: free-look from drag / keys only
     _targetQuat.copy(_offsetQuat);
+  }
+
+  if (state.cameraLayout === "carousel") {
+    // Yaw only so the ring stays level with the ground when the phone tilts.
+    _euler.setFromQuaternion(_targetQuat, "YXZ");
+    _euler.x = 0;
+    _euler.z = 0;
+    _targetQuat.setFromEuler(_euler);
   }
 
   // Fast slerp keeps screens feeling glued in space while softening sensor noise
@@ -1780,12 +1795,17 @@ function cameraVideoScale(node) {
 }
 
 function updateNodes(t, dt) {
-  if (state.cameraLayout === "carousel") layoutCameraCarousel();
+  const carousel = state.cameraLayout === "carousel";
+  if (carousel) layoutCameraCarousel();
+  const carouselY = camera ? camera.position.y : 1.4;
   for (const node of state.nodes) {
     if (node.anchorX != null) node.group.position.x = node.anchorX;
     if (node.anchorZ != null) node.group.position.z = node.anchorZ;
 
-    if (node.kind === "image") {
+    if (carousel) {
+      node.group.position.y = carouselY;
+      if (node.beacon) node.beacon.visible = false;
+    } else if (node.kind === "image") {
       if (node.flying) {
         node.group.position.y =
           node.baseY + Math.sin(t * 1.35 + node.phase) * 0.18;
@@ -1829,18 +1849,16 @@ function updateNodes(t, dt) {
         }
       }
       const swayAmp = node.flying ? 0.055 : 0.028;
-      const sway = state.cameraLayout === "carousel" ? 0 : Math.sin(t * 2.4 + node.phase) * swayAmp;
-      const breathe =
-        state.cameraLayout === "carousel"
-          ? 1
-          : 1 + Math.sin(t * 3.1 + node.phase) * (node.flying ? 0.04 : 0.02);
+      const sway = carousel ? 0 : Math.sin(t * 2.4 + node.phase) * swayAmp;
+      const breathe = carousel
+        ? CAROUSEL_SCALE
+        : 1 + Math.sin(t * 3.1 + node.phase) * (node.flying ? 0.04 : 0.02);
       node.screen.rotation.z = sway;
       node.screen.scale.setScalar(breathe);
     } else {
       node.frame.material.opacity = hot ? 0.55 : 0.16;
       node.screen.rotation.z = 0;
-      const viewScale =
-        state.cameraLayout === "carousel" ? 1 : cameraVideoScale(node);
+      const viewScale = carousel ? CAROUSEL_SCALE : cameraVideoScale(node);
       node.screen.scale.set(viewScale, viewScale, 1);
       node.frame.scale.set(viewScale, viewScale, 1);
       node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
@@ -2451,7 +2469,11 @@ function closeMapModal() {
 function updateGuideArrow() {
   if (!guide || !camera) return;
 
-  if (state.watching || state.mapOpen) {
+  if (
+    state.watching ||
+    state.mapOpen ||
+    state.cameraLayout === "carousel"
+  ) {
     guide.classList.remove("is-on");
     return;
   }
