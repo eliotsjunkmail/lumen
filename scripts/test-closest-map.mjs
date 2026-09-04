@@ -73,16 +73,25 @@ if (!inside.includes("here") || !inside.includes("near") || inside.includes("far
   throw new Error(`150 ft filter failed: ${inside}`);
 }
 
-function clampRange(value, min = 25, max = 1000, step = 25) {
+function snapRangeFt(ft) {
+  if (ft >= 5280) {
+    const miles = Math.round((ft / 5280) * 10) / 10;
+    return Math.min(10, Math.max(1, miles)) * 5280;
+  }
+  if (ft >= 1000) return Math.round(ft / 100) * 100;
+  if (ft >= 200) return Math.round(ft / 50) * 50;
+  return Math.round(ft / 25) * 25;
+}
+function clampRange(value, min = 25, max = 52800) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 100;
-  const stepped = Math.round(n / step) * step;
-  return Math.min(max, Math.max(min, stepped));
+  return Math.min(max, Math.max(min, snapRangeFt(n)));
 }
 if (clampRange(100) !== 100) throw new Error("default 100");
 if (clampRange(12) !== 25) throw new Error("min 25");
-if (clampRange(5000) !== 1000) throw new Error("max 1000");
+if (clampRange(60000) !== 52800) throw new Error("max 10 miles");
 if (clampRange(87) !== 75) throw new Error("step 25");
+if (clampRange(5280 * 2.24) !== 5280 * 2.2) throw new Error("miles snap");
 
 function pinchFov(startFov, startDist, nowDist, min = 28, max = 78) {
   const next = startFov * (startDist / nowDist);

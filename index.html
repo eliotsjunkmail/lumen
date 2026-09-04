@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=63" />
+    <link rel="stylesheet" href="styles.css?v=64" />
   </head>
   <body>
     <div id="app">
@@ -75,25 +75,23 @@
               aria-expanded="false"
               aria-controls="range-sheet"
             >
-              Within <span id="range-btn-value">100</span> ft
+              Within <span id="range-btn-value">100 ft</span>
             </button>
             <div id="range-sheet" class="range-sheet" hidden>
               <label class="range-sheet-label" for="range-slider">Show clips up to</label>
               <div class="range-sheet-row">
-                <span>25</span>
+                <span>25 ft</span>
                 <input
                   id="range-slider"
                   type="range"
-                  min="25"
+                  min="0"
                   max="1000"
-                  step="25"
-                  value="100"
+                  step="1"
+                  value="200"
                 />
-                <span>1,000</span>
+                <span>10 mi</span>
               </div>
-              <p class="range-sheet-value">
-                <span id="range-sheet-value">100</span> feet
-              </p>
+              <p class="range-sheet-value" id="range-sheet-value">100 ft</p>
             </div>
           </div>
         </header>
@@ -354,6 +352,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=63"></script>
+    <script type="module" src="app.js?v=64"></script>
   </body>
 </html>

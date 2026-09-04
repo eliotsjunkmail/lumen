@@ -266,6 +266,7 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  overflow: visible;
   pointer-events: none;
   animation: fade-down 0.7s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -285,8 +286,8 @@ button {
   pointer-events: auto;
   display: grid;
   justify-items: end;
-  gap: 0.4rem;
-  max-width: min(72vw, 16rem);
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .range-btn {
@@ -298,6 +299,7 @@ button {
   font-weight: 600;
   color: rgba(238, 247, 240, 0.88);
   text-align: right;
+  white-space: nowrap;
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
   text-decoration: underline;
   text-decoration-color: rgba(198, 255, 74, 0.7);
@@ -309,10 +311,14 @@ button {
 }
 
 .range-sheet {
-  position: relative;
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
   z-index: 8;
-  width: min(72vw, 16rem);
-  padding: 0.7rem 0.8rem 0.75rem;
+  box-sizing: border-box;
+  width: min(17.5rem, calc(100vw - 32px));
+  min-height: 7.6rem;
+  padding: 0.75rem 0.85rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--glass-strong);
@@ -336,12 +342,16 @@ button {
 
 .range-sheet-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 2.4rem 1fr 2.6rem;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   font-size: 0.68rem;
   font-weight: 700;
   color: rgba(238, 247, 240, 0.55);
+}
+
+.range-sheet-row span:last-child {
+  text-align: right;
 }
 
 .range-sheet-row input[type="range"] {
@@ -743,6 +753,11 @@ button {
 }
 
 /* —— Immersive watch theater —— */
+.field.is-ranging .radar {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .field.is-watching .hud-top,
 .field.is-watching .hud-bottom,
 .field.is-watching .radar,

@@ -10,9 +10,10 @@ import {
 import { readVideoCaptureMeta, formatTakenLabel } from "./video-meta.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
-const CAMERA_RANGE_MAX_FT = 1000;
+const CAMERA_RANGE_MAX_FT = 10 * 5280;
 const CAMERA_RANGE_DEFAULT_FT = 100;
-const CAMERA_RANGE_STEP_FT = 25;
+const CAMERA_RANGE_SLIDER_MAX = 1000;
+const FEET_PER_MILE = 5280;
 const RADAR_DOT_COUNT = 10;
 const MAP_LIST_COUNT = 20;
 const CAMERA_SPREAD_M = 2.05;
@@ -439,11 +440,38 @@ function placementAlongLook(distance = 3.2, y = 1.4) {
   ];
 }
 
+function snapRangeFt(ft) {
+  if (ft >= FEET_PER_MILE) {
+    const miles = Math.round((ft / FEET_PER_MILE) * 10) / 10;
+    return THREE.MathUtils.clamp(miles, 1, 10) * FEET_PER_MILE;
+  }
+  if (ft >= 1000) return Math.round(ft / 100) * 100;
+  if (ft >= 200) return Math.round(ft / 50) * 50;
+  return Math.round(ft / 25) * 25;
+}
+
 function clampCameraRangeFt(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return CAMERA_RANGE_DEFAULT_FT;
-  const stepped = Math.round(n / CAMERA_RANGE_STEP_FT) * CAMERA_RANGE_STEP_FT;
-  return Math.min(CAMERA_RANGE_MAX_FT, Math.max(CAMERA_RANGE_MIN_FT, stepped));
+  return THREE.MathUtils.clamp(
+    snapRangeFt(n),
+    CAMERA_RANGE_MIN_FT,
+    CAMERA_RANGE_MAX_FT
+  );
+}
+
+function sliderPosFromFt(ft) {
+  const min = Math.log(CAMERA_RANGE_MIN_FT);
+  const max = Math.log(CAMERA_RANGE_MAX_FT);
+  const t = (Math.log(Math.max(ft, CAMERA_RANGE_MIN_FT)) - min) / (max - min);
+  return Math.round(THREE.MathUtils.clamp(t, 0, 1) * CAMERA_RANGE_SLIDER_MAX);
+}
+
+function ftFromSliderPos(pos) {
+  const t = THREE.MathUtils.clamp(Number(pos) / CAMERA_RANGE_SLIDER_MAX, 0, 1);
+  const min = Math.log(CAMERA_RANGE_MIN_FT);
+  const max = Math.log(CAMERA_RANGE_MAX_FT);
+  return clampCameraRangeFt(Math.exp(min + t * (max - min)));
 }
 
 function loadCameraRangeFt() {
@@ -461,14 +489,20 @@ function geoRangeM() {
 }
 
 function formatRangeFt(ft) {
-  return Number(ft).toLocaleString("en-US");
+  if (ft >= FEET_PER_MILE) {
+    const miles = Math.round((ft / FEET_PER_MILE) * 10) / 10;
+    const label = miles === 1 ? "mile" : "miles";
+    return `${miles} ${label}`;
+  }
+  return `${Number(ft).toLocaleString("en-US")} ft`;
 }
 
 function syncRangeControls() {
   const ft = state.cameraRangeFt;
-  if (rangeBtnValue) rangeBtnValue.textContent = formatRangeFt(ft);
-  if (rangeSheetValue) rangeSheetValue.textContent = formatRangeFt(ft);
-  if (rangeSlider) rangeSlider.value = String(ft);
+  const label = formatRangeFt(ft);
+  if (rangeBtnValue) rangeBtnValue.textContent = label;
+  if (rangeSheetValue) rangeSheetValue.textContent = label;
+  if (rangeSlider) rangeSlider.value = String(sliderPosFromFt(ft));
 }
 
 function setCameraRangeFt(value, { persist = true } = {}) {
@@ -489,6 +523,7 @@ function openRangeSheet() {
   state.rangeOpen = true;
   rangeSheet.hidden = false;
   rangeBtn.setAttribute("aria-expanded", "true");
+  field?.classList.add("is-ranging");
 }
 
 function closeRangeSheet() {
@@ -496,6 +531,7 @@ function closeRangeSheet() {
   state.rangeOpen = false;
   rangeSheet.hidden = true;
   rangeBtn.setAttribute("aria-expanded", "false");
+  field?.classList.remove("is-ranging");
 }
 
 /** Birds, planes, and other airborne subjects sit in the sky instead of on the ground. */
@@ -1171,7 +1207,7 @@ function buildScene() {
     LOOK_FOV_DEFAULT,
     window.innerWidth / window.innerHeight,
     0.1,
-    100
+    20000
   );
   camera.position.set(0, 1.4, 0);
 
@@ -3599,7 +3635,7 @@ rangeBtn?.addEventListener("click", (e) => {
   else openRangeSheet();
 });
 rangeSlider?.addEventListener("input", () => {
-  setCameraRangeFt(rangeSlider.value);
+  setCameraRangeFt(ftFromSliderPos(rangeSlider.value));
 });
 rangeSheet?.addEventListener("click", (e) => e.stopPropagation());
 document.addEventListener("click", () => {
