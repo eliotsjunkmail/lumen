@@ -50,8 +50,9 @@ button {
 
 /* —— Entry gate (brand-first first viewport) —— */
 .gate {
-  display: grid;
-  place-items: end stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
   overflow: hidden;
   background:
     radial-gradient(120% 80% at 70% 10%, rgba(198, 255, 74, 0.22), transparent 55%),
@@ -75,16 +76,85 @@ button {
 .gate-copy {
   position: relative;
   z-index: 1;
-  padding: calc(28px + var(--safe-top)) 28px calc(36px + var(--safe-bottom));
+  flex: 0 0 auto;
+  padding: 12px 28px calc(36px + var(--safe-bottom));
   max-width: 34rem;
   animation: rise-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.gate-preview {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: calc(16px + var(--safe-top)) 16px 4px;
+}
+
+.gate-preview[hidden] {
+  display: none;
+}
+
+.gate-carousel {
+  --center: clamp(5.6rem, 28vw, 8.4rem);
+  --side-h: calc(var(--center) * 0.64);
+  --side-w: calc(var(--center) * 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(100%, 22rem);
+  height: var(--center);
+}
+
+.gate-card {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #14241c;
+}
+
+.gate-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.gate-card.is-center {
+  width: var(--center);
+  height: var(--center);
+  border-radius: 14px;
+  z-index: 2;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(198, 255, 74, 0.16);
+}
+
+.gate-card.is-left,
+.gate-card.is-right {
+  width: var(--side-w);
+  height: var(--side-h);
+  border-radius: 10px;
+  z-index: 1;
+  filter: brightness(0.72) saturate(0.92);
+}
+
+.gate-card.is-left {
+  margin-right: calc(var(--center) * -0.22);
+}
+
+.gate-card.is-right {
+  margin-left: calc(var(--center) * -0.22);
 }
 
 .brand {
   margin: 0 0 1.1rem;
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: clamp(3.4rem, 14vw, 5.6rem);
+  font-size: clamp(2.45rem, 12vw, 4.4rem);
   letter-spacing: -0.06em;
   line-height: 0.9;
   color: var(--signal);
@@ -193,6 +263,12 @@ button {
   color: rgba(238, 247, 240, 0.82);
 }
 
+.location-on {
+  color: var(--signal);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
 .location-btn {
   min-height: 2.6rem;
   padding: 0 1.1rem;
@@ -272,7 +348,7 @@ button {
   margin: 0;
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1.35rem;
+  font-size: 1.2rem;
   letter-spacing: -0.05em;
   color: var(--signal);
 }

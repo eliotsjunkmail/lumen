@@ -9,6 +9,7 @@ import {
   posterUrl,
 } from "./cloud.js";
 import { readVideoCaptureMeta, formatTakenLabel } from "./video-meta.js";
+import { coverFlowSlots } from "./cover-flow.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
 const CAMERA_RANGE_MAX_FT = 10 * 5280;
@@ -131,6 +132,10 @@ const nameCancel = document.getElementById("name-cancel");
 const locationPrompt = document.getElementById("location-prompt");
 const locationCopy = document.getElementById("location-copy");
 const locationBtn = document.getElementById("location-btn");
+const gatePreview = document.getElementById("gate-preview");
+const gateCarousel = document.getElementById("gate-carousel");
+const LOCATION_READY_HTML = 'Location <span class="location-on">ON</span>';
+let gateSpots = [];
 const radar = document.getElementById("radar");
 const fieldLocate = document.getElementById("field-locate");
 const mapModal = document.getElementById("map-modal");
@@ -275,14 +280,61 @@ function setLocationUi(kind, message) {
   locationPrompt.classList.remove("is-ready", "is-denied");
   if (kind === "ready") locationPrompt.classList.add("is-ready");
   if (kind === "denied") locationPrompt.classList.add("is-denied");
-  if (locationCopy) locationCopy.textContent = message;
+  if (locationCopy) {
+    if (kind === "ready") locationCopy.innerHTML = LOCATION_READY_HTML;
+    else locationCopy.textContent = message;
+  }
   if (locationBtn) {
     locationBtn.disabled = kind === "ready" || kind === "pending";
     if (kind === "pending") locationBtn.textContent = "Checking…";
     else if (kind === "denied") locationBtn.textContent = "Try again";
-    else if (kind === "ready") locationBtn.textContent = "Location on";
+    else if (kind === "ready") locationBtn.textContent = "Location ON";
     else locationBtn.textContent = "Enable location";
   }
+}
+
+function renderGateCarousel(slots) {
+  if (!gatePreview || !gateCarousel) return;
+  if (!slots?.center) {
+    gatePreview.hidden = true;
+    gateCarousel.replaceChildren();
+    return;
+  }
+
+  gatePreview.hidden = false;
+  gateCarousel.replaceChildren();
+  for (const [slot, spot] of [
+    ["left", slots.left],
+    ["center", slots.center],
+    ["right", slots.right],
+  ]) {
+    if (!spot) continue;
+    const card = document.createElement("article");
+    card.className = `gate-card is-${slot}`;
+    const img = document.createElement("img");
+    img.src = posterUrl(spot.video_path);
+    img.alt = spot.title || "Nearby clip";
+    img.draggable = false;
+    card.append(img);
+    gateCarousel.append(card);
+  }
+}
+
+function refreshGatePreview() {
+  renderGateCarousel(
+    coverFlowSlots(gateSpots, state.userGeo || state.originGeo, distanceMeters)
+  );
+}
+
+async function initGatePreview() {
+  if (!cloudConfigured()) return;
+  try {
+    gateSpots = await loadSpots();
+  } catch (err) {
+    console.warn(err);
+    return;
+  }
+  refreshGatePreview();
 }
 
 async function requestLocationAccess({ interactive = false } = {}) {
@@ -308,10 +360,8 @@ async function requestLocationAccess({ interactive = false } = {}) {
     anchorDemoVideosToLaunch();
     updateGeoAnchors();
     syncLocateButtons();
-    setLocationUi(
-      "ready",
-      "Location on."
-    );
+    setLocationUi("ready");
+    refreshGatePreview();
     return geo;
   } catch (err) {
     console.warn(err);
@@ -362,6 +412,7 @@ locationBtn?.addEventListener("click", () => {
 });
 
 initLocationOnLoad();
+initGatePreview();
 
 function startGeoWatch() {
   if (!navigator.geolocation || state.geoWatchId != null) return;

@@ -1,8 +1,8 @@
-# Lumen — project specs
+# Snaptrack — project specs
 
 ## Summary
 
-**Lumen** is a camera-based AR web app for watching videos in the world around you. Live rear-camera view with spatial video screens (Pokémon Go look-around + Spectacles-style HUD), focused on watching rather than collecting.
+**Snaptrack** is a camera-based AR web app for watching videos in the world around you. Live rear-camera view with spatial video screens (Pokémon Go look-around + Spectacles-style HUD), focused on watching rather than collecting.
 
 ## Goals
 
