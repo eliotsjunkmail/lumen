@@ -2642,8 +2642,11 @@ function bindLookControls() {
     if (ptrStart && Math.hypot(x - ptrStart.x, y - ptrStart.y) > 10) {
       ptrMoved = true;
     }
-    // Horizontal only — rotate photos / look left-right. Ignore up/down.
-    state.offsetYaw -= (x - prev.x) * 0.005;
+    // Horizontal only. In carousel, the strip follows the finger;
+    // in place mode, drag looks around the world.
+    const dx = (x - prev.x) * 0.005;
+    if (state.cameraLayout === "carousel") state.offsetYaw += dx;
+    else state.offsetYaw -= dx;
   };
 
   const onUp = (id, x, y) => {
