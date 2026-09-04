@@ -1494,8 +1494,44 @@ button {
   font-size: 0.6rem !important;
 }
 
-.leaflet-control-attribution a {
+    .leaflet-control-attribution a {
   color: rgba(238, 247, 240, 0.6) !important;
+}
+
+.map-locate {
+  width: 2.45rem;
+  height: 2.45rem;
+  margin-bottom: 8px;
+  border: 1px solid rgba(198, 255, 74, 0.3);
+  border-radius: 10px;
+  background: rgba(6, 16, 12, 0.88);
+  color: var(--signal);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.map-locate svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: block;
+}
+
+.map-locate:active {
+  transform: scale(0.94);
+}
+
+.map-locate.is-following {
+  color: #7eb0ff;
+  border-color: rgba(47, 107, 255, 0.55);
+  background: rgba(12, 28, 48, 0.92);
+}
+
+.map-locate:disabled {
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 .map-you-icon {

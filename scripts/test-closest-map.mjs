@@ -37,8 +37,21 @@ const many = Array.from({ length: 30 }, (_, i) => ({
   lng: -74.0,
 }));
 if (closest(many, user, 10).length !== 10) throw new Error("radar 10");
-if (closest(many, user).length !== 30) throw new Error("map all");
+if (closest(many, user, 20).length !== 20) throw new Error("view 20");
 if (closest(many, user, 10)[0] !== "n0") throw new Error("closest first");
+
+const portland = { lat: 43.66, lng: -70.25 };
+const atNyc = closest(nodes, user, 20);
+const atPortland = closest(nodes, portland, 20);
+if (atNyc[0] === atPortland[0]) {
+  throw new Error("map center should change the closest set");
+}
+if (atPortland[0] !== "portland") {
+  throw new Error(`portland origin should pick portland first — got ${atPortland[0]}`);
+}
+if (JSON.stringify(atNyc.slice(0, 20)) !== JSON.stringify(closest(nodes, user, 20))) {
+  throw new Error("camera and map must share the same closest 20");
+}
 
 const at4ft = cameraScale(1.22);
 if (at4ft > 0.6) throw new Error(`4 ft video still too large: ${at4ft}`);

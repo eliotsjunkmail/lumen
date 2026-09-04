@@ -87,9 +87,9 @@ for (const p of pts) {
   if (Math.abs(d - many.radius) > 1e-6) throw new Error("clip left the circle");
 }
 
-const big = carouselRingLayout(Array(12).fill(5.4));
-if (big.radius <= 7.8) throw new Error("3x clips should push the ring out past the old cap");
-assertNoOverlap(Array(12).fill(5.4), big.radius, big.angles);
+const twenty = carouselRingLayout(Array(20).fill(5.4));
+if (twenty.angles.length !== 20) throw new Error("20 angles");
+assertNoOverlap(Array(20).fill(5.4), twenty.radius, twenty.angles);
 
 const mixed = carouselRingLayout([2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4]);
 assertNoOverlap([2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4], mixed.radius, mixed.angles);

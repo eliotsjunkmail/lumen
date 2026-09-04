@@ -17,11 +17,13 @@ const TIME_RANGE_MAX_YR = 20;
 const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 const FEET_PER_MILE = 5280;
 const RADAR_DOT_COUNT = 10;
-const MAP_SUPPORT_ALL = "All clips · pinch to zoom, drag to pan.";
+const VIEW_CLIP_COUNT = 20;
+const MAP_SUPPORT_NEARBY =
+  "Closest 20 to the map center · pinch to zoom, drag to pan.";
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
-const CAROUSEL_MAX = 12;
+const CAROUSEL_MAX = VIEW_CLIP_COUNT;
 const CAROUSEL_GAP_M = 1.55;
 const CAROUSEL_SCALE = 3;
 const CAROUSEL_FLOOR_Y = 0.05;
@@ -152,6 +154,9 @@ const state = {
   uploadCount: 0,
   originGeo: null,
   userGeo: null,
+  viewGeo: null,
+  viewFollowsUser: true,
+  mapProgrammatic: false,
   geoWatchId: null,
   demoGeoReady: false,
   mapOpen: false,
@@ -286,6 +291,7 @@ async function requestLocationAccess({ interactive = false } = {}) {
     const geo = await readGps();
     state.userGeo = geo;
     state.originGeo = state.originGeo || { ...geo };
+    if (state.viewFollowsUser) state.viewGeo = { lat: geo.lat, lng: geo.lng };
     startGeoWatch();
     updateRadarMapBackground();
     anchorDemoVideosToLaunch();
@@ -355,6 +361,12 @@ function startGeoWatch() {
         accuracy: pos.coords.accuracy,
       };
       if (!state.originGeo) state.originGeo = { ...state.userGeo };
+      if (state.viewFollowsUser) {
+        state.viewGeo = {
+          lat: state.userGeo.lat,
+          lng: state.userGeo.lng,
+        };
+      }
       updateRadarMapBackground();
       anchorDemoVideosToLaunch();
       updateGeoAnchors();
@@ -364,13 +376,23 @@ function startGeoWatch() {
   );
 }
 
+function gpsOrigin() {
+  return state.userGeo || state.originGeo;
+}
+
+function viewOrigin() {
+  return state.viewGeo || gpsOrigin();
+}
+
 function radarZoomForNearby() {
-  const user = state.userGeo || state.originGeo;
-  if (!user) return 15;
+  const origin = viewOrigin();
+  if (!origin) return 15;
   const nearby = closestGeoNodes(RADAR_DOT_COUNT);
   if (!nearby.length) return 16;
   const farthest = Math.max(
-    ...nearby.map((n) => distanceMeters(user.lat, user.lng, n.lat, n.lng))
+    ...nearby.map((n) =>
+      distanceMeters(origin.lat, origin.lng, n.lat, n.lng)
+    )
   );
   if (farthest < 250) return 16;
   if (farthest < 900) return 15;
@@ -392,7 +414,7 @@ function latLngToTile(lat, lng, zoom) {
 
 function updateRadarMapBackground() {
   if (!radar) return;
-  const geo = state.userGeo || state.originGeo;
+  const geo = viewOrigin();
   if (!geo) return;
   const zoom = radarZoomForNearby();
   const key = `${geo.lat.toFixed(4)},${geo.lng.toFixed(4)},${zoom}`;
@@ -803,15 +825,11 @@ function spreadCoincidentPins() {
 
 /** Ring in-range clips around the camera, oldest left of heading, newer right. */
 function layoutCameraCarousel() {
-  const nearby = state.nodes
-    .filter((n) => n.group && n.inRange !== false)
-    .sort((a, b) => {
-      const da = a.distanceM ?? Infinity;
-      const db = b.distanceM ?? Infinity;
-      if (da !== db) return da - db;
-      return String(a.id).localeCompare(String(b.id));
-    })
-    .slice(0, CAROUSEL_MAX);
+  let nearby = viewClipNodes().filter((n) => n.group);
+  if (!nearby.length) {
+    nearby = state.nodes.filter((n) => n.group && n.inRange !== false);
+  }
+  nearby = nearby.slice(0, CAROUSEL_MAX);
 
   nearby.sort((a, b) => {
     const ta = nodeTakenMs(a);
@@ -1073,18 +1091,16 @@ function nodeTakenMs(node) {
 }
 
 function allGeoNodes() {
-  const user = state.userGeo || state.originGeo;
+  const origin = viewOrigin();
   const geo = state.nodes.filter(
     (n) => n.lat != null && n.lng != null && nodeInTimeRange(n)
   );
   if (!geo.length) return [];
-  if (!user) return geo;
+  if (!origin) return geo;
   return geo
     .map((n) => ({
       n,
-      d:
-        n.distanceM ??
-        distanceMeters(user.lat, user.lng, n.lat, n.lng),
+      d: distanceMeters(origin.lat, origin.lng, n.lat, n.lng),
     }))
     .sort((a, b) => a.d - b.d)
     .map(({ n }) => n);
@@ -1092,6 +1108,10 @@ function allGeoNodes() {
 
 function closestGeoNodes(limit) {
   return allGeoNodes().slice(0, limit);
+}
+
+function viewClipNodes() {
+  return closestGeoNodes(VIEW_CLIP_COUNT);
 }
 
 function syncRadarDots() {
@@ -1103,42 +1123,44 @@ function syncRadarDots() {
 }
 
 function radarSpanM() {
-  const user = state.userGeo || state.originGeo;
+  const origin = viewOrigin();
   const closest = closestGeoNodes(RADAR_DOT_COUNT);
   if (!closest.length) return 40;
   let farthest = 25;
   for (const n of closest) {
     const d =
       n.distanceM ??
-      (user ? distanceMeters(user.lat, user.lng, n.lat, n.lng) : 25);
+      (origin ? distanceMeters(origin.lat, origin.lng, n.lat, n.lng) : 25);
     if (d > farthest) farthest = d;
   }
   return farthest;
 }
 
 function updateGeoAnchors() {
-  const user = state.userGeo || state.originGeo;
-  if (!user) {
+  const origin = viewOrigin();
+  if (!origin) {
     spreadCoincidentPins();
     syncRadarDots();
     updateRadarMapBackground();
     return;
   }
 
+  const nearbyIds = new Set(viewClipNodes().map((n) => n.id));
+
   for (const node of state.nodes) {
     if (node.lat == null || node.lng == null) continue;
 
-    const dist = distanceMeters(user.lat, user.lng, node.lat, node.lng);
+    const dist = distanceMeters(origin.lat, origin.lng, node.lat, node.lng);
     node.distanceM = dist;
     const inTime = nodeInTimeRange(node);
-    const inRange = dist <= geoRangeM() && inTime;
+    const inRange = nearbyIds.has(node.id) && inTime;
     node.inRange = inRange;
     node.group.visible = inRange;
 
     // Place relative to the user so scene distance matches GPS range checks.
     // (Origin-relative ENU left nearby pins stranded far from the camera.)
     if (!node.worldLocked) {
-      const enu = enuFromOrigin(user.lat, user.lng, node.lat, node.lng);
+      const enu = enuFromOrigin(origin.lat, origin.lng, node.lat, node.lng);
       node.geoX = enu.x;
       node.geoZ = enu.z;
     } else if (node.geoX == null || node.geoZ == null) {
@@ -1156,7 +1178,7 @@ function updateGeoAnchors() {
         ? taken
           ? `Outside time frame · ${taken}`
           : "Outside time frame"
-        : `Out of range (${feet} ft)`;
+        : `Farther than the closest 20 (${feet} ft)`;
     if (!inRange && state.focused === node) setFocus(null);
   }
 
@@ -1894,7 +1916,8 @@ function isNodeInView(node) {
   camera.getWorldDirection(_forward);
   _to.copy(node.group.position).sub(camera.position);
   const dist = _to.length();
-  if (dist < 0.35 || dist > geoRangeM() + 4) return false;
+  if (dist < 0.35) return false;
+  if (state.cameraLayout !== "carousel" && dist > geoRangeM() + 4) return false;
   _to.normalize();
   const ang = Math.acos(THREE.MathUtils.clamp(_forward.dot(_to), -1, 1));
   // Same aim cone as lock-on — only then count as "in view"
@@ -1963,9 +1986,9 @@ function getLookYaw() {
 }
 
 function nodeGroundOffset(node) {
-  const user = state.userGeo || state.originGeo;
-  if (user && node.lat != null && node.lng != null) {
-    const enu = enuFromOrigin(user.lat, user.lng, node.lat, node.lng);
+  const origin = viewOrigin();
+  if (origin && node.lat != null && node.lng != null) {
+    const enu = enuFromOrigin(origin.lat, origin.lng, node.lat, node.lng);
     return { east: enu.x, north: -enu.z };
   }
   if (camera && node.group) {
@@ -2062,7 +2085,7 @@ function selectMapCluster(clusterId) {
   if (mapSupport) {
     mapSupport.textContent = state.selectedClusterId
       ? "Showing clips at this pin · tap again to clear."
-      : MAP_SUPPORT_ALL;
+      : MAP_SUPPORT_NEARBY;
   }
 }
 
@@ -2072,7 +2095,7 @@ function clearMapClusterSelection() {
   syncLeafletMarkers();
   refreshMapList();
   if (mapSupport && state.mapOpen) {
-    mapSupport.textContent = MAP_SUPPORT_ALL;
+    mapSupport.textContent = MAP_SUPPORT_NEARBY;
   }
 }
 
@@ -2080,7 +2103,7 @@ function clearMapClusterSelection() {
 function syncLeafletMarkers() {
   if (!state.leafletMap || !window.L) return;
   const L = window.L;
-  const geoNodes = allGeoNodes();
+  const geoNodes = viewClipNodes();
   const clusters = clusterMapNodes(geoNodes);
   const liveIds = new Set(clusters.map((c) => c.id));
 
@@ -2143,24 +2166,135 @@ function syncLeafletMarkers() {
   }
 }
 
-/** Zoom/pan to the user and every mapped clip. */
+/** Zoom/pan to GPS and the closest 20 clips around the view origin. */
+function withMapProgrammatic(fn) {
+  if (!state.leafletMap) return;
+  state.mapProgrammatic = true;
+  try {
+    fn();
+  } finally {
+    requestAnimationFrame(() => {
+      state.mapProgrammatic = false;
+    });
+  }
+}
+
 function fitMapToPins() {
   if (!state.leafletMap || !window.L) return;
   const L = window.L;
-  const origin = state.userGeo || state.originGeo;
-  const nearby = allGeoNodes();
+  const you = gpsOrigin();
+  const nearby = viewClipNodes();
   const points = [];
-  if (origin) points.push([origin.lat, origin.lng]);
+  if (you) points.push([you.lat, you.lng]);
   for (const node of nearby) points.push([node.lat, node.lng]);
   if (!points.length) return;
-  if (points.length === 1) {
-    state.leafletMap.setView(points[0], 16);
+  withMapProgrammatic(() => {
+    if (points.length === 1) {
+      state.leafletMap.setView(points[0], 16, { animate: false });
+      return;
+    }
+    state.leafletMap.fitBounds(L.latLngBounds(points), {
+      padding: [36, 36],
+      maxZoom: 16,
+      animate: false,
+    });
+  });
+}
+
+function syncMapLocateButton() {
+  const btn = document.getElementById("map-locate");
+  if (!btn) return;
+  btn.classList.toggle("is-following", Boolean(state.viewFollowsUser));
+  btn.disabled = !gpsOrigin();
+}
+
+function recenterMapOnUser() {
+  const you = gpsOrigin();
+  if (!you || !state.leafletMap) return;
+  state.viewFollowsUser = true;
+  state.viewGeo = { lat: you.lat, lng: you.lng };
+  const zoom = state.leafletMap.getZoom();
+  withMapProgrammatic(() => {
+    state.leafletMap.setView([you.lat, you.lng], zoom < 11 ? 16 : zoom, {
+      animate: false,
+    });
+  });
+  updateGeoAnchors();
+  syncLeafletMarkers();
+  refreshMapList();
+  syncMapLocateButton();
+  if (mapSupport && state.mapOpen && !state.selectedClusterId) {
+    mapSupport.textContent = MAP_SUPPORT_NEARBY;
+  }
+}
+
+function applyMapCenterAsViewOrigin({ force = false } = {}) {
+  if (state.mapProgrammatic || !state.leafletMap) return;
+  const c = state.leafletMap.getCenter();
+  if (!Number.isFinite(c.lat) || !Number.isFinite(c.lng)) return;
+  const prev = state.viewGeo;
+  if (
+    !force &&
+    prev &&
+    !state.viewFollowsUser &&
+    distanceMeters(prev.lat, prev.lng, c.lat, c.lng) < 8
+  ) {
     return;
   }
-  state.leafletMap.fitBounds(L.latLngBounds(points), {
-    padding: [36, 36],
-    maxZoom: 16,
+  state.viewFollowsUser = false;
+  state.viewGeo = { lat: c.lat, lng: c.lng };
+  updateGeoAnchors();
+  if (state.mapOpen) {
+    syncLeafletMarkers();
+    refreshMapList();
+  }
+  syncMapLocateButton();
+}
+
+let mapOriginTimer = 0;
+function onMapUserDrag() {
+  if (state.mapProgrammatic) return;
+  if (mapOriginTimer) return;
+  mapOriginTimer = window.setTimeout(() => {
+    mapOriginTimer = 0;
+    applyMapCenterAsViewOrigin();
+  }, 80);
+}
+
+function onMapUserDragEnd() {
+  if (mapOriginTimer) {
+    window.clearTimeout(mapOriginTimer);
+    mapOriginTimer = 0;
+  }
+  applyMapCenterAsViewOrigin({ force: true });
+}
+
+function addMapLocateControl(L, map) {
+  const Control = L.Control.extend({
+    onAdd() {
+      const btn = L.DomUtil.create("button", "map-locate");
+      btn.type = "button";
+      btn.id = "map-locate";
+      btn.setAttribute("aria-label", "Center on current location");
+      btn.innerHTML = `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0-6h2v2.06A8.01 8.01 0 0 1 19.94 10H22v2h-2.06A8.01 8.01 0 0 1 14 19.94V22h-2v-2.06A8.01 8.01 0 0 1 4.06 12H2v-2h2.06A8.01 8.01 0 0 1 10 4.06V2h2zm0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12z"
+          />
+        </svg>
+      `;
+      L.DomEvent.disableClickPropagation(btn);
+      L.DomEvent.disableScrollPropagation(btn);
+      L.DomEvent.on(btn, "click", (e) => {
+        L.DomEvent.stop(e);
+        recenterMapOnUser();
+      });
+      return btn;
+    },
   });
+  new Control({ position: "bottomright" }).addTo(map);
+  syncMapLocateButton();
 }
 
 let leafletPromise = null;
@@ -2228,7 +2362,10 @@ async function ensureLeafletMap(origin) {
       zIndexOffset: -200,
     }).addTo(state.leafletMap);
 
+    addMapLocateControl(L, state.leafletMap);
     state.leafletMap.on("click", () => clearMapClusterSelection());
+    state.leafletMap.on("drag", onMapUserDrag);
+    state.leafletMap.on("dragend", onMapUserDragEnd);
   }
   // Container was hidden (display:none) while created, so Leaflet needs a nudge
   requestAnimationFrame(() => state.leafletMap?.invalidateSize());
@@ -2311,12 +2448,12 @@ function buildMapListRow(node) {
 function refreshMapList() {
   if (!mapList) return;
 
-  let sourceNodes = allGeoNodes();
+  let sourceNodes = viewClipNodes();
   if (state.selectedClusterId) {
     const cluster = clusterMapNodes(sourceNodes).find(
       (c) => c.id === state.selectedClusterId
     );
-    sourceNodes = cluster ? cluster.nodes : allGeoNodes();
+    sourceNodes = cluster ? cluster.nodes : viewClipNodes();
   }
 
   const rows = sourceNodes
@@ -2409,7 +2546,7 @@ function updateMapView() {
   if (!state.mapOpen) return;
   const yaw = getLookYaw();
 
-  const origin = state.userGeo || state.originGeo;
+  const origin = gpsOrigin();
   if (state.leafletMap && state.leafletYou) {
     if (origin) state.leafletYou.setLatLng([origin.lat, origin.lng]);
   }
@@ -2430,10 +2567,10 @@ async function openMapModal() {
   mapModal.hidden = false;
   refreshMapList();
 
-  const origin = state.userGeo || state.originGeo;
+  const origin = gpsOrigin();
   if (mapSupport) {
     mapSupport.textContent = origin
-      ? MAP_SUPPORT_ALL
+      ? MAP_SUPPORT_NEARBY
       : "Enable location to see the map.";
   }
 
@@ -2446,11 +2583,26 @@ async function openMapModal() {
 
   if (mapViewport && !mapViewport.querySelector("#leaflet-map")) {
     mapViewport.innerHTML = `<div id="leaflet-map" class="leaflet-map"></div>`;
+    state.leafletMap = null;
+    state.leafletYou = null;
+    state.leafletMarkers = new Map();
   }
 
   try {
     await ensureLeafletMap(origin);
-    fitMapToPins();
+    if (state.viewFollowsUser) {
+      fitMapToPins();
+    } else if (state.viewGeo) {
+      withMapProgrammatic(() => {
+        const zoom = state.leafletMap.getZoom();
+        state.leafletMap.setView(
+          [state.viewGeo.lat, state.viewGeo.lng],
+          zoom,
+          { animate: false }
+        );
+      });
+    }
+    syncMapLocateButton();
   } catch (err) {
     console.warn("Map failed to load", err);
     if (mapViewport) {
@@ -2551,7 +2703,8 @@ function pickCenter() {
   camera.getWorldDirection(_forward);
   let best = null;
   let bestScore = Infinity;
-  const maxDist = geoRangeM() + 4;
+  const maxDist =
+    state.cameraLayout === "carousel" ? 240 : geoRangeM() + 4;
 
   for (const node of state.nodes) {
     if (!node.group.visible) continue;
@@ -3203,6 +3356,7 @@ function bootField(message) {
       const geo = await readGps();
       state.userGeo = geo;
       state.originGeo = geo;
+      if (state.viewFollowsUser) state.viewGeo = { lat: geo.lat, lng: geo.lng };
       startGeoWatch();
       anchorDemoVideosToLaunch();
       updateGeoAnchors();
@@ -3273,7 +3427,7 @@ async function syncSharedSpots() {
     if (state.mapOpen) {
       refreshMapList();
       syncLeafletMarkers();
-      fitMapToPins();
+      if (state.viewFollowsUser) fitMapToPins();
     }
     setStatus(
       added === 1 ? "Loaded 1 shared pin" : `Loaded ${added} shared pins`
