@@ -40,4 +40,29 @@ const row = spreadOffsets(3);
 if (Math.abs(row[1]) > 1e-9) throw new Error("middle clip should stay centered");
 if (Math.abs(row[2] - row[0] - 4.1) > 1e-9) throw new Error("row spacing");
 
+function withinRange(nodes, user, rangeM, distFn) {
+  return nodes.filter((n) => distFn(user, n) <= rangeM).map((n) => n.id);
+}
+
+const RANGE_M = 150 * 0.3048;
+const meters = (a, b) => {
+  const R = 6378137;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const x =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+};
+const ranged = [
+  { id: "here", lat: 40.71, lng: -74.0 },
+  { id: "near", lat: 40.7103, lng: -74.0 }, // ~33 m / 109 ft
+  { id: "far", lat: 40.72, lng: -74.0 }, // ~1.1 km
+];
+const inside = withinRange(ranged, user, RANGE_M, meters);
+if (!inside.includes("here") || !inside.includes("near") || inside.includes("far")) {
+  throw new Error(`150 ft filter failed: ${inside}`);
+}
+
 console.log("closest-map tests passed");
