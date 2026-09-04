@@ -137,6 +137,7 @@ const gatePreview = document.getElementById("gate-preview");
 const gateCarousel = document.getElementById("gate-carousel");
 const LOCATION_READY_HTML = 'Location <span class="location-on">ON</span>';
 let gateSpots = [];
+let pendingGateClipId = null;
 const radar = document.getElementById("radar");
 const fieldLocate = document.getElementById("field-locate");
 const mapModal = document.getElementById("map-modal");
@@ -310,13 +311,19 @@ function renderGateCarousel(slots) {
     ["right", slots.right],
   ]) {
     if (!spot) continue;
-    const card = document.createElement("article");
+    const card = document.createElement("button");
+    card.type = "button";
     card.className = `gate-card is-${slot}`;
+    card.setAttribute(
+      "aria-label",
+      `Open lens on ${spot.title || "nearby clip"}`
+    );
     const img = document.createElement("img");
     img.src = posterUrl(spot.video_path);
-    img.alt = spot.title || "Nearby clip";
+    img.alt = "";
     img.draggable = false;
     card.append(img);
+    card.addEventListener("click", () => enterFieldFromGate(spot));
     gateCarousel.append(card);
   }
 }
@@ -325,6 +332,22 @@ function refreshGatePreview() {
   renderGateCarousel(
     coverFlowSlots(gateSpots, state.userGeo || state.originGeo, distanceMeters)
   );
+}
+
+function enterFieldFromGate(spot) {
+  pendingGateClipId = spot?.id || null;
+  enterField();
+}
+
+function focusPendingGateClip() {
+  const id = pendingGateClipId;
+  if (!id) return;
+  const node = state.nodes.find(
+    (n) => n.cloudId === id || n.id === `spot-${id}`
+  );
+  if (!node) return;
+  pendingGateClipId = null;
+  openFieldOnClip(node);
 }
 
 async function initGatePreview() {
@@ -3891,6 +3914,7 @@ async function syncSharedSpots() {
       added === 1 ? "Loaded 1 shared pin" : `Loaded ${added} shared pins`
     );
   }
+  focusPendingGateClip();
 }
 
 async function enterField() {

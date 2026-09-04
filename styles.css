@@ -99,13 +99,13 @@ button {
 }
 
 .gate-carousel {
-  --center: clamp(4.8rem, 24vw, 7.2rem);
+  --center: clamp(8.2rem, 46vw, 13.5rem);
   --side-h: calc(var(--center) * 0.64);
   --side-w: calc(var(--center) * 0.78);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: min(100%, 22rem);
+  width: min(100%, 28rem);
   height: var(--center);
 }
 
@@ -113,7 +113,16 @@ button {
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
+  padding: 0;
+  border: 0;
   background: #14241c;
+  cursor: pointer;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.gate-card:active {
+  transform: scale(0.97);
 }
 
 .gate-card img {
@@ -170,14 +179,6 @@ button {
   letter-spacing: -0.03em;
   line-height: 1.15;
   max-width: 22ch;
-}
-
-.support {
-  margin: 1rem 0 0;
-  max-width: 34ch;
-  font-size: 1rem;
-  line-height: 1.45;
-  color: rgba(238, 247, 240, 0.78);
 }
 
 .cta-row {

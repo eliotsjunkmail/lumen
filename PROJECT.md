@@ -1,8 +1,8 @@
-# Snaptrack — project specs
+# SnapTrax — project specs
 
 ## Summary
 
-**Snaptrack** is a camera-based AR web app for watching videos in the world around you. Live rear-camera view with spatial video screens (Pokémon Go look-around + Spectacles-style HUD), focused on watching rather than collecting.
+**SnapTrax** is a camera-based AR web app for watching videos in the world around you. Live rear-camera view with spatial video screens (Pokémon Go look-around + Spectacles-style HUD), focused on watching rather than collecting.
 
 ## Goals
 
