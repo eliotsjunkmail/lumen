@@ -534,6 +534,7 @@ button {
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
+  color-scheme: dark;
 }
 
 .town-pick::after {
