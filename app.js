@@ -3894,6 +3894,7 @@ function bootField(message) {
   enableOrientation();
   window.addEventListener("resize", onResize);
 
+  setAddMediaLoading(true);
   gate.hidden = true;
   gate.setAttribute("aria-hidden", "true");
   gate.style.display = "none";
