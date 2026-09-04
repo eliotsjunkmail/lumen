@@ -54,22 +54,52 @@ if (JSON.stringify(atNyc) !== JSON.stringify(closest(nodes, user, 20))) {
   throw new Error("camera and list must share the same closest 20");
 }
 
-function viewWithCities(nodes, origin, limit, addedCities, cityOf) {
+function viewWithCities(
+  nodes,
+  origin,
+  limit,
+  addedCities,
+  cityOf,
+  excludedCities = new Set()
+) {
   const closestIds = closest(nodes, origin, limit);
-  const seen = new Set(closestIds);
-  const extra = [];
-  for (const n of nodes) {
-    if (addedCities.has(cityOf(n)) && !seen.has(n.id)) {
-      seen.add(n.id);
-      extra.push(n.id);
-    }
+  const out = [];
+  const seen = new Set();
+  for (const id of closestIds) {
+    const n = nodes.find((x) => x.id === id);
+    const city = cityOf(n);
+    if (city && excludedCities.has(city)) continue;
+    out.push(id);
+    seen.add(id);
   }
-  return closestIds.concat(extra);
+  for (const n of nodes) {
+    const city = cityOf(n);
+    if (!addedCities.has(city) || excludedCities.has(city)) continue;
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    out.push(n.id);
+  }
+  return out;
 }
 function selectedCities(nodes, viewIds, cityOf) {
   return new Set(
     nodes.filter((n) => viewIds.includes(n.id)).map((n) => cityOf(n))
   );
+}
+function cityIsSelected(key, nodes, origin, limit, addedCities, cityOf, excludedCities) {
+  if (!key || excludedCities.has(key)) return false;
+  if (addedCities.has(key)) return true;
+  const closestIds = new Set(closest(nodes, origin, limit));
+  return nodes.some((n) => closestIds.has(n.id) && cityOf(n) === key);
+}
+function toggleCity(key, addedCities, excludedCities, isOn) {
+  if (isOn) {
+    addedCities.delete(key);
+    excludedCities.add(key);
+  } else {
+    excludedCities.delete(key);
+    addedCities.add(key);
+  }
 }
 const cityNodes = [
   { id: "w1", lat: 40.71, lng: -74.0, city: "Westfield, NJ" },
@@ -99,6 +129,74 @@ added.clear();
 const resetView = viewWithCities(cityNodes, user, 2, added, cityOf);
 if (resetView.includes("p1") || resetView.length !== 2) {
   throw new Error("locate should reset to the closest set and drop added cities");
+}
+
+const excluded = new Set();
+if (
+  !cityIsSelected(
+    "Westfield, NJ",
+    cityNodes,
+    user,
+    2,
+    added,
+    cityOf,
+    excluded
+  )
+) {
+  throw new Error("closest-set cities should start selected");
+}
+toggleCity(
+  "Westfield, NJ",
+  added,
+  excluded,
+  cityIsSelected("Westfield, NJ", cityNodes, user, 2, added, cityOf, excluded)
+);
+const withoutWestfield = viewWithCities(
+  cityNodes,
+  user,
+  2,
+  added,
+  cityOf,
+  excluded
+);
+if (withoutWestfield.includes("w1") || withoutWestfield.includes("w2")) {
+  throw new Error("deselecting a closest city should drop its clips");
+}
+if (
+  cityIsSelected(
+    "Westfield, NJ",
+    cityNodes,
+    user,
+    2,
+    added,
+    cityOf,
+    excluded
+  )
+) {
+  throw new Error("deselected closest city should look off");
+}
+toggleCity(
+  "Westfield, NJ",
+  added,
+  excluded,
+  cityIsSelected("Westfield, NJ", cityNodes, user, 2, added, cityOf, excluded)
+);
+const westfieldBack = viewWithCities(
+  cityNodes,
+  user,
+  2,
+  added,
+  cityOf,
+  excluded
+);
+if (!westfieldBack.includes("w1") || !westfieldBack.includes("w2")) {
+  throw new Error("selecting a city again should bring its clips back");
+}
+added.clear();
+excluded.clear();
+const afterLocate = viewWithCities(cityNodes, user, 2, added, cityOf, excluded);
+if (afterLocate.length !== 2 || !afterLocate.includes("w1")) {
+  throw new Error("locate should clear added and excluded cities");
 }
 
 const at4ft = cameraScale(1.22);

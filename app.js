@@ -18,7 +18,7 @@ const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 const FEET_PER_MILE = 5280;
 const RADAR_DOT_COUNT = 10;
 const VIEW_CLIP_COUNT = 20;
-const MAP_SUPPORT_NEARBY = "All pins · tap a city to add its clips.";
+const MAP_SUPPORT_NEARBY = "All pins · tap a city to show or hide its clips.";
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
@@ -164,6 +164,7 @@ const state = {
   mapOpen: false,
   selectedClusterId: null,
   addedCityKeys: new Set(),
+  excludedCityKeys: new Set(),
   mapArrowEls: new Map(),
   mapRowEls: new Map(),
   mapListAt: 0,
@@ -1113,19 +1114,34 @@ function closestGeoNodes(limit) {
   return allGeoNodes().slice(0, limit);
 }
 
+function cityIsExcluded(key) {
+  return Boolean(key && state.excludedCityKeys.has(key));
+}
+
 function viewClipNodes() {
   const closest = closestGeoNodes(VIEW_CLIP_COUNT);
-  if (!state.addedCityKeys.size) return closest;
-  const seen = new Set(closest.map((n) => n.id));
-  const extra = [];
+  const out = [];
+  const seen = new Set();
+  for (const n of closest) {
+    if (cityIsExcluded(nodeCityKey(n))) continue;
+    out.push(n);
+    seen.add(n.id);
+  }
+  if (!state.addedCityKeys.size) return out;
   for (const n of allGeoNodes()) {
     const city = nodeCityKey(n);
-    if (city && state.addedCityKeys.has(city) && !seen.has(n.id)) {
-      seen.add(n.id);
-      extra.push(n);
-    }
+    if (!city || !state.addedCityKeys.has(city) || cityIsExcluded(city)) continue;
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    out.push(n);
   }
-  return closest.concat(extra);
+  return out;
+}
+
+function cityIsSelected(key) {
+  if (!key || cityIsExcluded(key)) return false;
+  if (state.addedCityKeys.has(key)) return true;
+  return closestGeoNodes(VIEW_CLIP_COUNT).some((n) => nodeCityKey(n) === key);
 }
 
 function syncRadarDots() {
@@ -2237,6 +2253,7 @@ function recenterOnUser() {
   state.viewFollowsUser = true;
   state.viewGeo = { lat: you.lat, lng: you.lng };
   state.addedCityKeys = new Set();
+  state.excludedCityKeys = new Set();
   cityTagSig = "";
   if (state.leafletMap) {
     const zoom = state.leafletMap.getZoom();
@@ -2501,15 +2518,14 @@ function renderCityTagBar(el, groups, viewIds) {
   el.replaceChildren();
   for (const group of groups) {
     const on = group.nodes.some((n) => viewIds.has(n.id));
-    const pinned = state.addedCityKeys.has(group.key);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "city-tag";
     if (on) btn.classList.add("is-on");
-    if (pinned) btn.classList.add("is-pinned");
     btn.setAttribute("aria-pressed", String(on));
     btn.textContent = group.label;
     btn.addEventListener("click", (e) => {
+      e.preventDefault();
       e.stopPropagation();
       toggleCityTag(group.key);
     });
@@ -2527,7 +2543,7 @@ function syncCityTags() {
       (g) =>
         `${g.key}:${g.nodes.some((n) => viewIds.has(n.id)) ? 1 : 0}:${
           state.addedCityKeys.has(g.key) ? 1 : 0
-        }`
+        }:${state.excludedCityKeys.has(g.key) ? 1 : 0}`
     )
     .join("|");
   if (sig === cityTagSig && fieldTags?.childElementCount === groups.length) {
@@ -2540,8 +2556,13 @@ function syncCityTags() {
 
 function toggleCityTag(key) {
   if (!key) return;
-  if (state.addedCityKeys.has(key)) state.addedCityKeys.delete(key);
-  else state.addedCityKeys.add(key);
+  if (cityIsSelected(key)) {
+    state.addedCityKeys.delete(key);
+    state.excludedCityKeys.add(key);
+  } else {
+    state.excludedCityKeys.delete(key);
+    state.addedCityKeys.add(key);
+  }
   cityTagSig = "";
   updateGeoAnchors();
   syncCityTags();
@@ -2550,6 +2571,35 @@ function toggleCityTag(key) {
     syncLeafletMarkers();
   }
 }
+
+function isolateCityTagGestures(el) {
+  if (!el || el.dataset.gesturesBound) return;
+  el.dataset.gesturesBound = "1";
+  const stop = (e) => {
+    e.stopPropagation();
+  };
+  // Bubble phase so the pills still receive clicks; just keep the
+  // gesture from bubbling into the field and turning the carousel.
+  for (const type of [
+    "pointerdown",
+    "pointermove",
+    "pointerup",
+    "pointercancel",
+    "mousedown",
+    "mousemove",
+    "mouseup",
+    "touchstart",
+    "touchmove",
+    "touchend",
+    "touchcancel",
+    "wheel",
+  ]) {
+    el.addEventListener(type, stop, { passive: true });
+  }
+}
+
+isolateCityTagGestures(fieldTags);
+isolateCityTagGestures(mapTags);
 
 function buildMapListRow(node) {
   const li = document.createElement("li");
@@ -3138,8 +3188,14 @@ function bindLookControls() {
     camera.updateProjectionMatrix();
   };
 
+  const hitCityTags = (x, y) => {
+    const hit = document.elementFromPoint(x, y);
+    return Boolean(hit?.closest?.(".city-tags"));
+  };
+
   const onDown = (id, x, y) => {
     if (state.watching || state.mapOpen || !state.booted) return;
+    if (hitCityTags(x, y)) return;
     pointers.set(id, { x, y });
     if (pointers.size === 1) {
       pinching = false;

@@ -219,6 +219,7 @@ button {
 /* —— AR field —— */
 .field {
   background: #000;
+  touch-action: auto;
 }
 
 .cam,
@@ -237,13 +238,9 @@ button {
   filter: saturate(1.08) contrast(1.05);
 }
 
-.field,
-.stage {
-  touch-action: none;
-}
-
 .stage {
   z-index: 1;
+  touch-action: none;
 }
 
 .hud-bottom,
@@ -891,10 +888,17 @@ button {
 
 .city-tags {
   display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 0.4rem;
+  max-height: 7.4rem;
   overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  pointer-events: auto;
 }
 
 .city-tags::-webkit-scrollbar {
@@ -907,6 +911,7 @@ button {
 
 .city-tag {
   flex: 0 0 auto;
+  max-width: 100%;
   margin: 0;
   padding: 0.32rem 0.7rem;
   border-radius: 999px;
@@ -917,6 +922,7 @@ button {
   font-weight: 600;
   letter-spacing: -0.01em;
   white-space: nowrap;
+  touch-action: pan-x pan-y;
 }
 
 .city-tag.is-on {
@@ -930,16 +936,17 @@ button {
 }
 
 .field-tags {
-  left: 16px;
-  right: 110px;
+  left: 12px;
+  right: 12px;
   bottom: calc(92px + var(--safe-bottom));
   z-index: 4;
-  pointer-events: auto;
-  padding: 2px 0;
+  max-height: 28vh;
+  padding: 4px 2px 6px;
 }
 
 .map-tags {
   min-height: 0;
+  max-height: 6.6rem;
 }
 
 /* —— Immersive watch theater —— */
