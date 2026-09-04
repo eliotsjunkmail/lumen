@@ -230,6 +230,16 @@ if (placed.dx !== 3.1 || placed.dz !== 0.2) {
   throw new Error("place radar should follow scene positions");
 }
 
+function showCameraRadar(layout) {
+  return layout !== "carousel";
+}
+if (showCameraRadar("carousel")) {
+  throw new Error("carousel camera should hide the round map");
+}
+if (!showCameraRadar("place")) {
+  throw new Error("place camera still shows the round map");
+}
+
 function viewClips(nodes, selectedTown, cityOf, cap = 20) {
   if (!selectedTown) return nodes.slice(0, cap);
   return nodes.filter((n) => cityOf(n) === selectedTown);

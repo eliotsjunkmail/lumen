@@ -117,6 +117,7 @@ const settingsModal = document.getElementById("settings-modal");
 const settingsClose = document.getElementById("settings-close");
 const focusLabel = document.getElementById("focus-label");
 const townSelect = document.getElementById("town-select");
+const townSlot = document.querySelector(".town-slot");
 const watchBtn = document.getElementById("watch-btn");
 const statusEl = document.getElementById("status");
 const radarDots = document.getElementById("radar-dots");
@@ -435,7 +436,7 @@ function latLngToTile(lat, lng, zoom) {
 }
 
 function updateRadarMapBackground() {
-  if (!radar) return;
+  if (!radar || state.cameraLayout === "carousel") return;
   const geo = viewOrigin();
   if (!geo) return;
   const zoom = radarZoomForNearby();
@@ -2558,7 +2559,7 @@ function recenterOnUser() {
     state.mapExpandedTown = here;
     state.mapTownCollapsed = false;
   }
-  townSelectSig = "";
+  syncTownDropdown();
   if (state.leafletMap) {
     const zoom = state.leafletMap.getZoom();
     withMapProgrammatic(() => {
@@ -2807,19 +2808,6 @@ function userTownName() {
   return nearestCachedPlace(you.lat, you.lng);
 }
 
-function collectTownNames() {
-  const names = new Set();
-  const here = userTownName();
-  if (here) names.add(here);
-  const selected = formatTownName(state.selectedTown);
-  if (selected) names.add(selected);
-  for (const node of allGeoNodes()) {
-    const town = nodeTown(node);
-    if (town) names.add(town);
-  }
-  return [...names].sort((a, b) => a.localeCompare(b));
-}
-
 function ensureTownPlaces() {
   const you = gpsOrigin();
   if (you) lookupPlace(you.lat, you.lng);
@@ -2834,35 +2822,14 @@ function ensureTownPlaces() {
   }
 }
 
-let townSelectSig = "";
-
 function syncTownDropdown() {
   if (!townSelect) return;
-  const towns = collectTownNames();
   const selected = formatTownName(state.selectedTown || "");
   if (selected && state.selectedTown !== selected) state.selectedTown = selected;
-  const placeholder = unnamedTownLabel();
-  const locating = Boolean(state.townFollowsUser && !selected);
-  const sig = `${towns.join("|")}@${selected}@${placeholder}@${locating ? 1 : 0}`;
-  if (sig === townSelectSig) return;
-  townSelectSig = sig;
-  townSelect.disabled = false;
-  townSelect.replaceChildren();
-  const names = towns.length ? [...towns] : [placeholder];
-  if (locating && !names.includes(placeholder)) names.unshift(placeholder);
-  for (const name of names) {
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    townSelect.appendChild(opt);
-  }
-  if (selected && names.includes(selected)) {
-    townSelect.value = selected;
-  } else if (names.includes(placeholder)) {
-    townSelect.value = placeholder;
-  } else {
-    townSelect.value = names[0] || "";
-  }
+  const label = selected || unnamedTownLabel();
+  if (townSelect.textContent !== label) townSelect.textContent = label;
+  townSelect.setAttribute("aria-expanded", String(Boolean(state.mapOpen)));
+  townSelect.setAttribute("aria-label", `Open map, ${label}`);
 }
 
 function selectTown(name, { fromUser = false } = {}) {
@@ -2877,7 +2844,6 @@ function selectTown(name, { fromUser = false } = {}) {
   state.selectedTown = next;
   state.mapExpandedTown = next;
   state.mapTownCollapsed = false;
-  townSelectSig = "";
   if (fromUser) centerCarouselInView();
   syncTownDropdown();
   updateGeoAnchors();
@@ -2934,11 +2900,10 @@ function buildMapTownGroup(key) {
     if (state.mapExpandedTown === key) {
       state.mapExpandedTown = "";
       state.mapTownCollapsed = true;
-    } else {
-      state.mapExpandedTown = key;
-      state.mapTownCollapsed = false;
+      refreshMapList();
+      return;
     }
-    refreshMapList();
+    selectTown(key, { fromUser: true });
   });
   return {
     key,
@@ -3121,6 +3086,7 @@ async function openMapModal() {
   state.mapTownCollapsed = false;
   ensureTownPlaces();
   refreshMapList();
+  syncTownDropdown();
 
   const origin = gpsOrigin();
 
@@ -3166,6 +3132,7 @@ function closeMapModal() {
   state.mapOpen = false;
   state.selectedClusterId = null;
   mapModal.hidden = true;
+  syncTownDropdown();
 }
 
 /** Yaw to rotate ground-forward (fromX, fromZ) onto (toX, toZ). */
@@ -4102,12 +4069,14 @@ fieldLocate?.addEventListener("click", (e) => {
   e.stopPropagation();
   recenterOnUser();
 });
-townSelect?.addEventListener("pointerdown", (e) => e.stopPropagation());
-townSelect?.addEventListener("touchstart", (e) => e.stopPropagation(), {
+townSlot?.addEventListener("pointerdown", (e) => e.stopPropagation());
+townSlot?.addEventListener("touchstart", (e) => e.stopPropagation(), {
   passive: true,
 });
-townSelect?.addEventListener("change", () => {
-  selectTown(townSelect.value, { fromUser: true });
+townSlot?.addEventListener("click", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  openMapModal();
 });
 mapClose?.addEventListener("click", closeMapModal);
 mapBackdrop?.addEventListener("click", closeMapModal);

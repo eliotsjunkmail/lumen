@@ -557,18 +557,15 @@ button {
   flex: 1;
   display: grid;
   gap: 0.12rem;
+  cursor: pointer;
 }
 
 .town-pick {
   position: relative;
   display: block;
-  min-width: 0;
-}
-
-.town-pick select {
-  display: block;
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   margin: 0;
   padding: 0 1.25rem 0 0;
   border: 0;
@@ -579,12 +576,13 @@ button {
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+  text-align: left;
   white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
-  color-scheme: dark;
   pointer-events: auto;
   touch-action: manipulation;
 }
@@ -600,11 +598,6 @@ button {
   border-bottom: 2px solid var(--signal);
   transform: translateY(-70%) rotate(45deg);
   pointer-events: none;
-}
-
-.town-pick select:disabled {
-  opacity: 0.55;
-  cursor: wait;
 }
 
 .radar {
@@ -798,6 +791,10 @@ button {
 }
 
 .field.is-carousel .guide {
+  display: none;
+}
+
+.field.is-carousel .radar {
   display: none;
 }
 

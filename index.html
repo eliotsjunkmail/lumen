@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=126" />
+    <link rel="stylesheet" href="styles.css?v=127" />
   </head>
   <body>
     <div id="app">
@@ -144,9 +144,15 @@
 
           <footer class="hud-bottom">
           <div class="town-slot">
-            <label class="town-pick">
-              <select id="town-select" aria-label="Town"></select>
-            </label>
+            <button
+              type="button"
+              class="town-pick"
+              id="town-select"
+              aria-haspopup="dialog"
+              aria-controls="map-modal"
+              aria-expanded="false"
+              aria-label="Open map"
+            ></button>
             <p class="watch-label" id="focus-label">Scan the field</p>
           </div>
         </footer>
@@ -464,6 +470,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=126"></script>
+    <script type="module" src="app.js?v=127"></script>
   </body>
 </html>
