@@ -102,4 +102,22 @@ if (pinchFov(60, 100, 50) <= 60) throw new Error("pinch should zoom out");
 if (pinchFov(60, 100, 10) !== 78) throw new Error("fov max");
 if (pinchFov(60, 100, 400) !== 28) throw new Error("fov min");
 
+function radarOffset(node, cam, layout) {
+  const useGeo =
+    layout === "carousel" && node.geoX != null && node.geoZ != null;
+  const x = useGeo ? node.geoX : node.x;
+  const z = useGeo ? node.geoZ : node.z;
+  return { dx: x - cam.x, dz: z - cam.z };
+}
+const ringNode = { geoX: 18, geoZ: -7, x: 3.1, z: 0.2 };
+const cam = { x: 0, z: 0 };
+const car = radarOffset(ringNode, cam, "carousel");
+if (car.dx !== 18 || car.dz !== -7) {
+  throw new Error("carousel radar should use GPS, not the 3D ring");
+}
+const placed = radarOffset(ringNode, cam, "place");
+if (placed.dx !== 3.1 || placed.dz !== 0.2) {
+  throw new Error("place radar should follow scene positions");
+}
+
 console.log("closest-map tests passed");

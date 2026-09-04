@@ -1926,6 +1926,18 @@ function isNodeInView(node) {
   return ang <= 0.48;
 }
 
+function radarWorldOffset(node) {
+  const useGeo =
+    state.cameraLayout === "carousel" &&
+    node.geoX != null &&
+    node.geoZ != null;
+  const x = useGeo ? node.geoX : node.group.position.x;
+  const z = useGeo ? node.geoZ : node.group.position.z;
+  const originX = camera ? camera.position.x : 0;
+  const originZ = camera ? camera.position.z : 0;
+  return { dx: x - originX, dz: z - originZ };
+}
+
 function updateRadar() {
   const radius = 34;
   const center = 42;
@@ -1937,8 +1949,7 @@ function updateRadar() {
   for (const node of state.nodes) {
     if (!node.radar || node.radar.style.display === "none") continue;
 
-    const dx = node.group.position.x - camera.position.x;
-    const dz = node.group.position.z - camera.position.z;
+    const { dx, dz } = radarWorldOffset(node);
     const right = dx * cos - dz * sin;
     const forward = dx * sin + dz * cos;
     const dist = Math.hypot(right, forward) || 1;
