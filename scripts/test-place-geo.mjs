@@ -2,6 +2,9 @@ import {
   distanceMeters,
   nearestCachedPlace,
   placeCacheKey,
+  regionCode,
+  townFromBigDataCloud,
+  townFromNominatim,
 } from "../place-geo.js";
 
 const westfield = { lat: 40.6568, lng: -74.3465 };
@@ -40,6 +43,26 @@ if (nearestCachedPlace(cache, 40.7, -74.0) !== null) {
 
 if (nearestCachedPlace(cache, 41.3, -72.9) !== null) {
   throw new Error("far GPS should not pick a distant cached town");
+}
+
+if (regionCode("US-NJ") !== "NJ") throw new Error("US-NJ should shorten to NJ");
+if (townFromBigDataCloud({
+  city: "Westfield",
+  locality: "Westfield",
+  principalSubdivisionCode: "US-NJ",
+}) !== "Westfield, NJ") {
+  throw new Error("BigDataCloud Westfield parse");
+}
+if (townFromNominatim({
+  address: { town: "Westfield", "ISO3166-2-lvl4": "US-NJ" },
+}) !== "Westfield, NJ") {
+  throw new Error("Nominatim Westfield parse");
+}
+if (townFromBigDataCloud(null) !== "") throw new Error("empty geocode");
+
+const nearbyClip = { lat: westfield.lat + 0.004, lng: westfield.lng };
+if (nearestCachedPlace(cache, nearbyClip.lat, nearbyClip.lng, 1600) !== "Westfield, NJ") {
+  throw new Error("clips within a mile should inherit the cached town");
 }
 
 console.log("place-geo tests passed");

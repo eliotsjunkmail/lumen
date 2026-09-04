@@ -15,6 +15,7 @@ import {
   distanceMeters,
   nearestCachedPlace as nearestPlaceInCache,
   placeCacheKey,
+  fetchTownName,
 } from "./place-geo.js";
 import {
   carouselTiltAmount,
@@ -2736,56 +2737,59 @@ function formatMapDistance(meters) {
 // Reverse-geocode cache: pins cluster, so round to ~100m cells
 const placeCache = new Map();
 const placeRetryAt = new Map();
+const placePending = new Set();
+const placeQueue = [];
+let placeInflight = 0;
+const PLACE_CONCURRENCY = 2;
+const NODE_TOWN_M = 1600;
 
 function lookupPlace(lat, lng) {
   const key = placeCacheKey(lat, lng);
-  if (placeCache.has(key)) return placeCache.get(key);
-  const retryAt = placeRetryAt.get(key) || 0;
-  if (retryAt > Date.now()) return null;
-  placeCache.set(key, null); // pending
-
-  fetch(
-    `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
-  )
-    .then((res) => (res.ok ? res.json() : null))
-    .then((data) => {
-      if (!data) {
-        placeCache.delete(key);
-        placeRetryAt.set(key, Date.now() + 8000);
-        return;
-      }
-      const city = formatTownName(data.city || data.locality || "");
-      const stateCode =
-        (data.principalSubdivisionCode || "").split("-").pop() ||
-        data.principalSubdivision ||
-        "";
-      const place = formatTownName(
-        city && stateCode ? `${city}, ${stateCode}` : city || stateCode
-      );
-      if (!place) {
-        placeCache.delete(key);
-        placeRetryAt.set(key, Date.now() + 8000);
-        return;
-      }
-      placeRetryAt.delete(key);
-      placeCache.set(key, place);
-      const you = gpsOrigin();
-      if (
-        state.townFollowsUser &&
-        you &&
-        distanceMeters(you.lat, you.lng, lat, lng) <= 450
-      ) {
-        state.selectedTown = place;
-      }
-      if (state.mapOpen) refreshMapList();
-      syncTownDropdown();
-      updateGeoAnchors();
-    })
-    .catch(() => {
-      placeCache.delete(key);
-      placeRetryAt.set(key, Date.now() + 8000);
-    });
+  const cached = placeCache.get(key);
+  if (cached) return cached;
+  if (placePending.has(key)) return null;
+  if ((placeRetryAt.get(key) || 0) > Date.now()) return null;
+  placePending.add(key);
+  placeQueue.push({ lat, lng, key });
+  pumpPlaceQueue();
   return null;
+}
+
+function pumpPlaceQueue() {
+  while (placeInflight < PLACE_CONCURRENCY && placeQueue.length) {
+    const job = placeQueue.shift();
+    placeInflight += 1;
+    fetchTownName(job.lat, job.lng)
+      .then((place) => {
+        placePending.delete(job.key);
+        placeInflight -= 1;
+        if (!place) {
+          placeRetryAt.set(job.key, Date.now() + 8000);
+          pumpPlaceQueue();
+          return;
+        }
+        placeRetryAt.delete(job.key);
+        placeCache.set(job.key, place);
+        const you = gpsOrigin();
+        if (
+          state.townFollowsUser &&
+          you &&
+          distanceMeters(you.lat, you.lng, job.lat, job.lng) <= 450
+        ) {
+          state.selectedTown = place;
+        }
+        if (state.mapOpen) refreshMapList();
+        syncTownDropdown();
+        updateGeoAnchors();
+        pumpPlaceQueue();
+      })
+      .catch(() => {
+        placePending.delete(job.key);
+        placeInflight -= 1;
+        placeRetryAt.set(job.key, Date.now() + 8000);
+        pumpPlaceQueue();
+      });
+  }
 }
 
 function nearestCachedPlace(lat, lng, maxM = 450) {
@@ -2794,7 +2798,7 @@ function nearestCachedPlace(lat, lng, maxM = 450) {
 
 function nodeTown(node) {
   if (node?.lat == null || node.lng == null) return null;
-  return formatTownName(placeCache.get(placeCacheKey(node.lat, node.lng))) || null;
+  return nearestCachedPlace(node.lat, node.lng, NODE_TOWN_M);
 }
 
 function userTownName() {
@@ -3110,6 +3114,7 @@ async function openMapModal() {
   state.mapOpen = true;
   mapModal.hidden = false;
   state.mapExpandedTown = null;
+  ensureTownPlaces();
   refreshMapList();
 
   const origin = gpsOrigin();

@@ -38,3 +38,60 @@ export function nearestCachedPlace(cache, lat, lng, maxM = 450) {
   }
   return best || null;
 }
+
+export function regionCode(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const iso = s.split("-").pop();
+  if (iso && iso.length >= 2 && iso.length <= 3) return iso.toUpperCase();
+  return s;
+}
+
+export function townFromBigDataCloud(data) {
+  if (!data || typeof data !== "object") return "";
+  const city = formatTownName(data.city || data.locality || "");
+  const stateCode =
+    regionCode(data.principalSubdivisionCode) || data.principalSubdivision || "";
+  return formatTownName(
+    city && stateCode ? `${city}, ${stateCode}` : city || stateCode
+  );
+}
+
+export function townFromNominatim(data) {
+  if (!data || typeof data !== "object") return "";
+  const a = data.address || {};
+  const city = formatTownName(
+    a.city || a.town || a.village || a.hamlet || a.municipality || ""
+  );
+  const stateCode = regionCode(a["ISO3166-2-lvl4"]) || a.state || "";
+  return formatTownName(
+    city && stateCode ? `${city}, ${stateCode}` : city || stateCode
+  );
+}
+
+async function fetchJson(url, timeoutMs = 6000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** BigDataCloud first, Nominatim if that is empty or times out. */
+export async function fetchTownName(lat, lng) {
+  const bdc = await fetchJson(
+    `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
+  );
+  const fromBdc = townFromBigDataCloud(bdc);
+  if (fromBdc) return fromBdc;
+  const nom = await fetchJson(
+    `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
+  );
+  return townFromNominatim(nom) || "";
+}
