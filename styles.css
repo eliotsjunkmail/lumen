@@ -245,7 +245,6 @@ button {
 
 .hud-bottom,
 .radar,
-.field-locate,
 .field-tags,
 .aim,
 .delete-btn,
@@ -277,6 +276,13 @@ button {
   font-size: 1.35rem;
   letter-spacing: -0.05em;
   color: var(--signal);
+}
+
+.hud-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .settings-btn {
@@ -574,19 +580,19 @@ button {
 }
 
 .field-locate {
-  top: calc(72px + var(--safe-top) + 94px);
-  right: 22px;
-  width: 2.45rem;
-  height: 2.45rem;
+  pointer-events: auto;
+  width: 2.5rem;
+  height: 2.5rem;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid rgba(198, 255, 74, 0.3);
-  background: rgba(6, 16, 12, 0.78);
-  color: var(--signal);
+  border: 1px solid var(--line);
+  background: var(--glass-strong);
+  color: var(--foam);
   display: grid;
   place-items: center;
   cursor: pointer;
-  animation: fade-down 0.7s 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .field-locate svg {

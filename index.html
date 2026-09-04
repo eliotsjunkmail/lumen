@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=98" />
+    <link rel="stylesheet" href="styles.css?v=99" />
   </head>
   <body>
     <div id="app">
@@ -65,14 +65,29 @@
 
         <header class="hud-top">
           <p class="hud-brand">Lumen</p>
-          <button
-            type="button"
-            id="settings-btn"
-            class="settings-btn"
-            aria-label="Settings"
-            aria-expanded="false"
-            aria-controls="settings-modal"
-          >
+          <div class="hud-top-actions">
+            <button
+              type="button"
+              class="field-locate"
+              id="field-locate"
+              aria-label="Center on current location"
+              title="My location"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0-6h2v2.06A8.01 8.01 0 0 1 19.94 10H22v2h-2.06A8.01 8.01 0 0 1 14 19.94V22h-2v-2.06A8.01 8.01 0 0 1 4.06 12H2v-2h2.06A8.01 8.01 0 0 1 10 4.06V2h2zm0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12z"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              id="settings-btn"
+              class="settings-btn"
+              aria-label="Settings"
+              aria-expanded="false"
+              aria-controls="settings-modal"
+            >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path
                 fill="currentColor"
@@ -80,6 +95,7 @@
               />
             </svg>
           </button>
+          </div>
         </header>
 
         <button
@@ -93,21 +109,6 @@
           <div class="radar-ring radar-ring--mid" aria-hidden="true"></div>
           <div class="radar-you" aria-hidden="true"></div>
           <div class="radar-dots" id="radar-dots" aria-hidden="true"></div>
-        </button>
-
-        <button
-          type="button"
-          class="field-locate"
-          id="field-locate"
-          aria-label="Center on current location"
-          title="My location"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0-6h2v2.06A8.01 8.01 0 0 1 19.94 10H22v2h-2.06A8.01 8.01 0 0 1 14 19.94V22h-2v-2.06A8.01 8.01 0 0 1 4.06 12H2v-2h2.06A8.01 8.01 0 0 1 10 4.06V2h2zm0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12z"
-            />
-          </svg>
         </button>
 
         <div class="guide" id="guide" aria-hidden="true">
@@ -462,6 +463,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=98"></script>
+    <script type="module" src="app.js?v=99"></script>
   </body>
 </html>
