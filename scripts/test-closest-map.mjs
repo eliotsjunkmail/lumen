@@ -150,6 +150,26 @@ if (openTown !== "Boston, MA") throw new Error("expanding a town should close th
 openTown = expandOne(openTown, "Portland, ME");
 if (openTown !== "Portland, ME") throw new Error("only one town should stay open");
 
+function pinOpenTownFirst(groups, openKey) {
+  if (!openKey) return groups;
+  const i = groups.findIndex((g) => g.key === openKey);
+  if (i <= 0) return groups;
+  const next = groups.slice();
+  const [open] = next.splice(i, 1);
+  next.unshift(open);
+  return next;
+}
+const pinned = pinOpenTownFirst(accordion, "Boston, MA");
+if (pinned.map((g) => g.key).join("|") !== "Boston, MA|Westfield, NJ|Portland, ME") {
+  throw new Error(`open city should move to the top — got ${pinned.map((g) => g.key)}`);
+}
+if (pinOpenTownFirst(accordion, "Westfield, NJ")[0].key !== "Westfield, NJ") {
+  throw new Error("already-first city should stay first");
+}
+if (pinOpenTownFirst(accordion, "")[0].key !== "Westfield, NJ") {
+  throw new Error("no open city should keep distance order");
+}
+
 const at4ft = cameraScale(1.22);
 if (at4ft > 0.6) throw new Error(`4 ft video still too large: ${at4ft}`);
 if (cameraScale(3.2) < 0.99) throw new Error("3.2 m should stay full size");

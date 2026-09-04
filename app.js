@@ -2888,6 +2888,31 @@ function collectMapTownGroups(nodes) {
   });
 }
 
+/** Put the open accordion first so it sits at the top of the list area. */
+function pinOpenTownFirst(groups, openKey) {
+  if (!openKey) return groups;
+  const i = groups.findIndex((g) => g.key === openKey);
+  if (i <= 0) return groups;
+  const ordered = groups.slice();
+  const [open] = ordered.splice(i, 1);
+  ordered.unshift(open);
+  return ordered;
+}
+
+let mapListPinnedTown = "";
+
+function scrollOpenTownToListTop() {
+  if (!mapList || !state.mapExpandedTown) {
+    mapListPinnedTown = "";
+    return;
+  }
+  if (mapListPinnedTown === state.mapExpandedTown) return;
+  mapListPinnedTown = state.mapExpandedTown;
+  requestAnimationFrame(() => {
+    mapList.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
 function updateMapClipRow(row, node, dist) {
   if (row.title.textContent !== node.title) row.title.textContent = node.title;
   row.play.setAttribute(
@@ -2936,8 +2961,9 @@ function refreshMapList() {
 
   const liveTowns = new Set();
   const liveIds = new Set();
+  const ordered = pinOpenTownFirst(groups, state.mapExpandedTown);
 
-  groups.forEach((group, index) => {
+  ordered.forEach((group, index) => {
     liveTowns.add(group.key);
     let townEl = state.mapTownEls.get(group.key);
     if (!townEl) {
@@ -2993,6 +3019,7 @@ function refreshMapList() {
   for (const [id, row] of state.mapRowEls) {
     state.mapArrowEls.set(id, row.arrow);
   }
+  scrollOpenTownToListTop();
 }
 
 function escapeHtml(text) {
@@ -3078,6 +3105,7 @@ function closeMapModal() {
   state.mapOpen = false;
   state.selectedClusterId = null;
   mapModal.hidden = true;
+  mapListPinnedTown = "";
   syncTownDropdown();
 }
 
