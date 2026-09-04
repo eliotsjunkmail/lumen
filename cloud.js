@@ -13,14 +13,25 @@ export function cloudConfigured() {
   return isCloudConfigured();
 }
 
+export function deliveryVideoPath(path) {
+  return String(path || "").replace(/\.\w+$/, ".mp4");
+}
+
 export function videoUrl(path) {
-  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/${path}`;
+  const mp4Path = deliveryVideoPath(path);
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/${mp4Path}`;
 }
 
 /** Small poster frame Cloudinary renders from the video's first second. */
 export function thumbUrl(path) {
-  const jpg = path.replace(/\.\w+$/, ".jpg");
+  const jpg = String(path || "").replace(/\.\w+$/, ".jpg");
   return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/so_0,w_120,h_120,c_fill/${jpg}`;
+}
+
+/** Field-size still so clips are visible before a video frame decodes. */
+export function posterUrl(path) {
+  const jpg = String(path || "").replace(/\.\w+$/, ".jpg");
+  return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/video/upload/so_0,w_900,c_limit,q_auto/${jpg}`;
 }
 
 export async function loadSpots() {

@@ -6,6 +6,7 @@ import {
   deleteSpot,
   videoUrl,
   thumbUrl,
+  posterUrl,
 } from "./cloud.js";
 import { readVideoCaptureMeta, formatTakenLabel } from "./video-meta.js";
 
@@ -1490,7 +1491,7 @@ function makeVideoElement(src) {
   video.loop = true;
   video.muted = true;
   video.playsInline = true;
-  video.preload = "metadata";
+  video.preload = "none";
   video.setAttribute("playsinline", "");
   video.setAttribute("webkit-playsinline", "");
   return video;
@@ -1560,6 +1561,72 @@ function applyVideoAspect(node) {
   if (w > 1 && h > 1) applyMediaAspect(node, w, h);
 }
 
+function makePlaceholderTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 9;
+  canvas.height = 16;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#111";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function videoPosterSrc(node) {
+  if (node?.storagePath) return posterUrl(node.storagePath);
+  if (node?.thumbUrl) return node.thumbUrl;
+  return "";
+}
+
+function setNodeMap(node, tex) {
+  if (!node?.screen?.material || !tex) return;
+  node.texture = tex;
+  node.screen.material.map = tex;
+  node.screen.material.needsUpdate = true;
+}
+
+function showLiveVideoTexture(node) {
+  if (!node?.video) return;
+  if (!node.videoTex) {
+    node.videoTex = new THREE.VideoTexture(node.video);
+    node.videoTex.colorSpace = THREE.SRGBColorSpace;
+  }
+  setNodeMap(node, node.videoTex);
+}
+
+function showPosterTexture(node) {
+  if (node?.posterTex) setNodeMap(node, node.posterTex);
+}
+
+function applyPosterTexture(node, src) {
+  if (!node || node.kind !== "video" || !src) return;
+  if (node.posterSrc === src && node.posterTex) return;
+  node.posterSrc = src;
+  const img = new Image();
+  if (!String(src).startsWith("blob:") && !String(src).startsWith("data:")) {
+    img.crossOrigin = "anonymous";
+  }
+  img.onload = () => {
+    if (node.posterSrc !== src) return;
+    const w = img.naturalWidth || img.width || 0;
+    const h = img.naturalHeight || img.height || 0;
+    if (w < 2 || h < 2) return;
+    const tex = new THREE.Texture(img);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    const prev = node.posterTex;
+    node.posterTex = tex;
+    if (!node.previewing) setNodeMap(node, tex);
+    if (prev && prev !== tex && prev !== node.videoTex) prev.dispose();
+    applyMediaAspect(node, w, h);
+  };
+  img.onerror = () => {
+    if (node.posterSrc === src) node.posterSrc = "";
+  };
+  img.src = src;
+}
+
 function createNode(item, index) {
   const group = new THREE.Group();
   group.position.set(...item.position);
@@ -1586,8 +1653,7 @@ function createNode(item, index) {
     }
   } else {
     video = makeVideoElement(item.src);
-    texture = new THREE.VideoTexture(video);
-    texture.colorSpace = THREE.SRGBColorSpace;
+    texture = makePlaceholderTexture();
   }
 
   const screen = new THREE.Mesh(
@@ -1680,6 +1746,9 @@ function createNode(item, index) {
     baseY: item.position[1],
     phase: index * 1.1,
     previewing: false,
+    posterTex: kind === "video" ? texture : null,
+    videoTex: null,
+    posterSrc: "",
     animFrames,
     animCanvas,
     animCtx,
@@ -1692,6 +1761,7 @@ function createNode(item, index) {
   refreshNodeChrome(node);
 
   if (video) {
+    applyPosterTexture(node, videoPosterSrc(node));
     const onMeta = () => applyVideoAspect(node);
     if (video.readyState >= 1) onMeta();
     else video.addEventListener("loadedmetadata", onMeta, { once: true });
@@ -1744,7 +1814,7 @@ function disposeNode(node) {
     node.video.removeAttribute("src");
     node.video.load();
   }
-    if (node.objectUrl) URL.revokeObjectURL(node.objectUrl);
+  if (node.objectUrl) URL.revokeObjectURL(node.objectUrl);
   if (Array.isArray(node.animUrls)) {
     for (const u of node.animUrls) {
       try {
@@ -1754,7 +1824,8 @@ function disposeNode(node) {
       }
     }
   }
-node.texture?.dispose();
+  const textures = new Set([node.texture, node.posterTex, node.videoTex]);
+  for (const tex of textures) tex?.dispose();
   node.screen.geometry.dispose();
   node.frame.geometry.dispose();
   node.label.geometry.dispose();
@@ -3052,6 +3123,7 @@ async function ensurePreview(node) {
     node.video.currentTime = Math.min(1, node.video.duration || 1);
     await node.video.play();
     node.previewing = true;
+    showLiveVideoTexture(node);
   } catch {
     // Autoplay may fail until gesture; ignore
   }
@@ -3067,6 +3139,7 @@ function pausePreviews(exceptId) {
         /* ignore */
       }
     }
+    if (node.previewing) showPosterTexture(node);
     node.previewing = false;
   }
 }
@@ -3181,6 +3254,7 @@ function openTheater(node, opts = {}) {
     theaterVideo.removeAttribute("controls");
     theaterVideo.setAttribute("playsinline", "");
     theaterVideo.setAttribute("webkit-playsinline", "");
+    theaterVideo.poster = videoPosterSrc(node) || "";
     theaterVideo.src = node.src;
     theaterVideo.muted = false;
     theaterVideo.play().catch(() => {
@@ -4176,6 +4250,7 @@ async function placeNamedVideo(file, name, opts = {}) {
   grabVideoFrame(file)
     .then((frame) => {
       node.thumbUrl = frame.toDataURL("image/jpeg", 0.65);
+      applyPosterTexture(node, videoPosterSrc(node));
       if (state.mapOpen) refreshMapList();
     })
     .catch(() => {});
@@ -4194,6 +4269,7 @@ async function placeNamedVideo(file, name, opts = {}) {
       node.cloudId = res.id;
       node.storagePath = res.path;
       node.deleteToken = res.deleteToken;
+      applyPosterTexture(node, videoPosterSrc(node));
       setStatus(`“${name}” shared — anyone here can watch it`);
     } catch (err) {
       console.warn(err);
