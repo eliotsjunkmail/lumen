@@ -134,4 +134,12 @@ if (placed.dx !== 3.1 || placed.dz !== 0.2) {
   throw new Error("place radar should follow scene positions");
 }
 
+function mapHeadingDeg(yawRad) {
+  return (-yawRad * 180) / Math.PI;
+}
+if (Math.abs(mapHeadingDeg(0)) > 1e-9) throw new Error("north-up heading");
+if (Math.abs(mapHeadingDeg(Math.PI / 2) + 90) > 1e-9) {
+  throw new Error("facing east should rotate map -90");
+}
+
 console.log("closest-map tests passed");

@@ -237,6 +237,66 @@ button {
   filter: saturate(1.08) contrast(1.05);
 }
 
+.field-map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #eae6dc;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.field-map-spin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150vmax;
+  height: 150vmax;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.field-leaflet {
+  width: 100%;
+  height: 100%;
+}
+
+.field-map-credit {
+  position: absolute;
+  right: 10px;
+  bottom: calc(10px + var(--safe-bottom));
+  margin: 0;
+  z-index: 1;
+  font-size: 0.58rem;
+  color: rgba(6, 16, 12, 0.55);
+  pointer-events: none;
+}
+
+.field.is-carousel .cam {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.field.is-carousel .field-map {
+  opacity: 1;
+  visibility: visible;
+}
+
+.field.is-carousel .field-map::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at 50% 42%,
+    rgba(6, 16, 12, 0.08) 20%,
+    rgba(6, 16, 12, 0.38) 100%
+  );
+  pointer-events: none;
+}
+
 .field,
 .stage {
   touch-action: none;

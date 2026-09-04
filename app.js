@@ -168,6 +168,10 @@ const state = {
   leafletMap: null,
   leafletMarkers: new Map(),
   leafletYou: null,
+  fieldLeaflet: null,
+  fieldMapLoading: false,
+  fieldMapOrigin: null,
+  groundRing: null,
   nodes: [],
   clock: new THREE.Clock(),
   hasGyro: false,
@@ -676,6 +680,10 @@ function loadCameraLayout() {
   return "carousel";
 }
 
+function mapHeadingDeg(yawRad) {
+  return (-yawRad * 180) / Math.PI;
+}
+
 function syncLayoutControls() {
   const carousel = state.cameraLayout === "carousel";
   layoutPlaceBtn?.classList.toggle("is-on", !carousel);
@@ -683,6 +691,9 @@ function syncLayoutControls() {
   layoutPlaceBtn?.setAttribute("aria-pressed", String(!carousel));
   layoutCarouselBtn?.setAttribute("aria-pressed", String(carousel));
   field?.classList.toggle("is-carousel", carousel);
+  if (state.groundRing) state.groundRing.visible = !carousel;
+  if (carousel) ensureFieldMap();
+  else updateFieldMapHeading();
 }
 
 function captureCarouselHeading() {
@@ -1723,6 +1734,8 @@ function buildScene() {
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = 0.01;
+  ground.visible = state.cameraLayout !== "carousel";
+  state.groundRing = ground;
   scene.add(ground);
 
   state.nodes = CATALOG.map((item, index) => createNode(item, index));
@@ -2342,6 +2355,78 @@ function loadLeaflet() {
     });
   }
   return leafletPromise;
+}
+
+function updateFieldMapHeading() {
+  const spin = document.getElementById("field-map-spin");
+  if (!spin) return;
+  if (state.cameraLayout !== "carousel") {
+    spin.style.transform = "translate(-50%, -50%)";
+    return;
+  }
+  const deg = mapHeadingDeg(getLookYaw());
+  spin.style.transform = `translate(-50%, -50%) rotate(${deg}deg)`;
+}
+
+function updateFieldMapCenter() {
+  const origin = viewOrigin();
+  if (!state.fieldLeaflet || !origin) return;
+  const prev = state.fieldMapOrigin;
+  if (
+    prev &&
+    distanceMeters(prev.lat, prev.lng, origin.lat, origin.lng) < 8
+  ) {
+    return;
+  }
+  state.fieldMapOrigin = { lat: origin.lat, lng: origin.lng };
+  state.fieldLeaflet.setView([origin.lat, origin.lng], 16, { animate: false });
+}
+
+function updateFieldMap() {
+  if (state.cameraLayout !== "carousel") return;
+  ensureFieldMap();
+  updateFieldMapHeading();
+  updateFieldMapCenter();
+}
+
+async function ensureFieldMap() {
+  if (state.fieldLeaflet || state.fieldMapLoading) return;
+  if (state.cameraLayout !== "carousel") return;
+  const origin = viewOrigin();
+  const host = document.getElementById("field-leaflet");
+  if (!origin || !host) return;
+  state.fieldMapLoading = true;
+  try {
+    const L = await loadLeaflet();
+    if (state.fieldLeaflet) return;
+    state.fieldLeaflet = L.map(host, {
+      zoomControl: false,
+      attributionControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      touchZoom: false,
+      doubleClickZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      center: [origin.lat, origin.lng],
+      zoom: 16,
+      maxZoom: 19,
+    });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      subdomains: "abc",
+      maxZoom: 19,
+    }).addTo(state.fieldLeaflet);
+    state.fieldMapOrigin = { lat: origin.lat, lng: origin.lng };
+    requestAnimationFrame(() => {
+      state.fieldLeaflet?.invalidateSize();
+      updateFieldMapHeading();
+    });
+  } catch (err) {
+    console.warn("Field map failed to load", err);
+    state.fieldLeaflet = null;
+  } finally {
+    state.fieldMapLoading = false;
+  }
 }
 
 /** Build the real map once; safe to call again on every open. */
@@ -3173,6 +3258,7 @@ function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   applyLayoutFov();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  state.fieldLeaflet?.invalidateSize();
 }
 
 // —— Hand gestures: thumbs-up reacts on the focused video ——
@@ -3307,6 +3393,7 @@ function animate() {
   const t = state.clock.elapsedTime;
   updateCameraRig(dt);
   updateNodes(t, dt);
+  updateFieldMap();
   updateRadar();
   updateGuideArrow();
   updateMapView();
@@ -3353,6 +3440,13 @@ function bootField(message) {
   field.style.display = "block";
 
   if (renderer) animate();
+  if (state.cameraLayout === "carousel") {
+    ensureFieldMap();
+    requestAnimationFrame(() => {
+      state.fieldLeaflet?.invalidateSize();
+      updateFieldMapHeading();
+    });
+  }
   setStatus(message);
   if (camEl.srcObject) {
     camEl.play().catch(() => {});

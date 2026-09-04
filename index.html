@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=87" />
+    <link rel="stylesheet" href="styles.css?v=88" />
   </head>
   <body>
     <div id="app">
@@ -53,6 +53,12 @@
       </section>
 
       <section id="field" class="field" hidden aria-label="AR video field">
+        <div id="field-map" class="field-map" aria-hidden="true">
+          <div class="field-map-spin" id="field-map-spin">
+            <div id="field-leaflet" class="field-leaflet"></div>
+          </div>
+          <p class="field-map-credit">© OpenStreetMap</p>
+        </div>
         <video
           id="cam"
           class="cam"
@@ -417,6 +423,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=87"></script>
+    <script type="module" src="app.js?v=88"></script>
   </body>
 </html>
