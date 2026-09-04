@@ -16,7 +16,13 @@ import {
   placeCacheKey,
   fetchTownName,
 } from "./place-geo.js";
-import { carouselDragLiftDelta } from "./carousel-tilt.js";
+import {
+  carouselTiltAmount,
+  carouselRowShiftY,
+  carouselRowSpan,
+  carouselDragLiftDelta,
+  carouselRelativePitch,
+} from "./carousel-tilt.js";
 import {
   playGrowTarget,
   stepPlayGrow,
@@ -50,6 +56,8 @@ const CAROUSEL_DROP_Y = -0.2;
 const CAROUSEL_DRAG_Y_MIN = -3.2;
 const CAROUSEL_DRAG_Y_MAX = 2.4;
 const CAROUSEL_DRAG_LIFT = 0.007;
+/** Phone tilt moves the two-row ring farther per degree. */
+const CAROUSEL_TILT_GAIN = 2.1;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
@@ -1012,17 +1020,31 @@ function layoutCameraCarousel() {
   let shiftY = 0;
   if (twoRow) {
     let bottomY = 0;
+    let topY = 0;
     let pairCount = 0;
     for (const col of columns) {
       if (!col[1]) continue;
       bottomY += col[0].anchorY;
+      topY += col[1].anchorY;
       pairCount += 1;
     }
     if (pairCount) {
       bottomY /= pairCount;
+      topY /= pairCount;
       const camY = camera?.position.y ?? 1.4;
-      shiftY = camY - bottomY;
+      const span = carouselRowSpan(bottomY, topY, radius);
+      const targetT = carouselTiltAmount(
+        state.carouselLookPitch,
+        span,
+        CAROUSEL_TILT_GAIN
+      );
+      state.carouselTiltT += (targetT - state.carouselTiltT) * 0.22;
+      shiftY = carouselRowShiftY(camY, bottomY, topY, state.carouselTiltT);
+    } else {
+      state.carouselTiltT = 0;
     }
+  } else {
+    state.carouselTiltT = 0;
   }
   shiftY += state.carouselDragY;
   shiftY -= CAROUSEL_DROP_Y;
@@ -2102,9 +2124,18 @@ function updateCameraRig(dt) {
   }
 
   if (state.cameraLayout === "carousel") {
-    // World-lock the ring: keep real pitch so clips stay planted in space.
-    // Zero roll only, so the horizon does not twist.
+    // Keep the ring level; two-row mode uses this pitch to slide rows into the viewfinder.
     _euler.setFromQuaternion(_targetQuat, "YXZ");
+    const pitch = _euler.x;
+    if (state.orientReady && state.carouselPitchBaseline == null) {
+      state.carouselPitchBaseline = pitch;
+      state.carouselTiltT = 0;
+    }
+    state.carouselLookPitch = carouselRelativePitch(
+      pitch,
+      state.carouselPitchBaseline
+    );
+    _euler.x = 0;
     _euler.z = 0;
     _targetQuat.setFromEuler(_euler);
   }
