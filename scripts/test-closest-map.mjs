@@ -1,12 +1,12 @@
 function closest(nodes, user, limit) {
-  return nodes
+  const sorted = nodes
     .map((n) => ({
       n,
       d: Math.hypot(n.lat - user.lat, n.lng - user.lng),
     }))
     .sort((a, b) => a.d - b.d)
-    .slice(0, limit)
     .map(({ n }) => n.id);
+  return limit == null ? sorted : sorted.slice(0, limit);
 }
 
 function cameraScale(dist, h = 1.65) {
@@ -37,7 +37,7 @@ const many = Array.from({ length: 30 }, (_, i) => ({
   lng: -74.0,
 }));
 if (closest(many, user, 10).length !== 10) throw new Error("radar 10");
-if (closest(many, user, 20).length !== 20) throw new Error("map 20");
+if (closest(many, user).length !== 30) throw new Error("map all");
 if (closest(many, user, 10)[0] !== "n0") throw new Error("closest first");
 
 const at4ft = cameraScale(1.22);

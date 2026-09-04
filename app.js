@@ -17,7 +17,7 @@ const TIME_RANGE_MAX_YR = 20;
 const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 const FEET_PER_MILE = 5280;
 const RADAR_DOT_COUNT = 10;
-const MAP_LIST_COUNT = 20;
+const MAP_SUPPORT_ALL = "All clips · pinch to zoom, drag to pan.";
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
@@ -1072,13 +1072,13 @@ function nodeTakenMs(node) {
   return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
 }
 
-function closestGeoNodes(limit) {
+function allGeoNodes() {
   const user = state.userGeo || state.originGeo;
   const geo = state.nodes.filter(
     (n) => n.lat != null && n.lng != null && nodeInTimeRange(n)
   );
   if (!geo.length) return [];
-  if (!user) return geo.slice(0, limit);
+  if (!user) return geo;
   return geo
     .map((n) => ({
       n,
@@ -1087,8 +1087,11 @@ function closestGeoNodes(limit) {
         distanceMeters(user.lat, user.lng, n.lat, n.lng),
     }))
     .sort((a, b) => a.d - b.d)
-    .slice(0, limit)
     .map(({ n }) => n);
+}
+
+function closestGeoNodes(limit) {
+  return allGeoNodes().slice(0, limit);
 }
 
 function syncRadarDots() {
@@ -2059,7 +2062,7 @@ function selectMapCluster(clusterId) {
   if (mapSupport) {
     mapSupport.textContent = state.selectedClusterId
       ? "Showing clips at this pin · tap again to clear."
-      : "Closest 20 clips · pinch to zoom, drag to pan.";
+      : MAP_SUPPORT_ALL;
   }
 }
 
@@ -2069,7 +2072,7 @@ function clearMapClusterSelection() {
   syncLeafletMarkers();
   refreshMapList();
   if (mapSupport && state.mapOpen) {
-    mapSupport.textContent = "Closest 20 clips · pinch to zoom, drag to pan.";
+    mapSupport.textContent = MAP_SUPPORT_ALL;
   }
 }
 
@@ -2077,7 +2080,7 @@ function clearMapClusterSelection() {
 function syncLeafletMarkers() {
   if (!state.leafletMap || !window.L) return;
   const L = window.L;
-  const geoNodes = closestGeoNodes(MAP_LIST_COUNT);
+  const geoNodes = allGeoNodes();
   const clusters = clusterMapNodes(geoNodes);
   const liveIds = new Set(clusters.map((c) => c.id));
 
@@ -2140,12 +2143,12 @@ function syncLeafletMarkers() {
   }
 }
 
-/** Zoom/pan to the user and the closest 20 clips. */
+/** Zoom/pan to the user and every mapped clip. */
 function fitMapToPins() {
   if (!state.leafletMap || !window.L) return;
   const L = window.L;
   const origin = state.userGeo || state.originGeo;
-  const nearby = closestGeoNodes(MAP_LIST_COUNT);
+  const nearby = allGeoNodes();
   const points = [];
   if (origin) points.push([origin.lat, origin.lng]);
   for (const node of nearby) points.push([node.lat, node.lng]);
@@ -2308,12 +2311,12 @@ function buildMapListRow(node) {
 function refreshMapList() {
   if (!mapList) return;
 
-  let sourceNodes = closestGeoNodes(MAP_LIST_COUNT);
+  let sourceNodes = allGeoNodes();
   if (state.selectedClusterId) {
     const cluster = clusterMapNodes(sourceNodes).find(
       (c) => c.id === state.selectedClusterId
     );
-    sourceNodes = cluster ? cluster.nodes : closestGeoNodes(MAP_LIST_COUNT);
+    sourceNodes = cluster ? cluster.nodes : allGeoNodes();
   }
 
   const rows = sourceNodes
@@ -2328,7 +2331,7 @@ function refreshMapList() {
     mapList.innerHTML = `<li class="map-list-empty">${
       state.selectedClusterId
         ? "No clips at this pin"
-        : "No clips nearby"
+        : "No clips"
     }</li>`;
     state.mapRowEls = new Map();
     return;
@@ -2430,7 +2433,7 @@ async function openMapModal() {
   const origin = state.userGeo || state.originGeo;
   if (mapSupport) {
     mapSupport.textContent = origin
-      ? "Closest 20 clips · pinch to zoom, drag to pan."
+      ? MAP_SUPPORT_ALL
       : "Enable location to see the map.";
   }
 
