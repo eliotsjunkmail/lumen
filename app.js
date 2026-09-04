@@ -1985,7 +1985,7 @@ function buildScene() {
     new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.07,
+      opacity: 0.03,
       side: THREE.DoubleSide,
     })
   );
