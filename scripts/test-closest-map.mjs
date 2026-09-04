@@ -54,6 +54,53 @@ if (JSON.stringify(atNyc) !== JSON.stringify(closest(nodes, user, 20))) {
   throw new Error("camera and list must share the same closest 20");
 }
 
+function viewWithCities(nodes, origin, limit, addedCities, cityOf) {
+  const closestIds = closest(nodes, origin, limit);
+  const seen = new Set(closestIds);
+  const extra = [];
+  for (const n of nodes) {
+    if (addedCities.has(cityOf(n)) && !seen.has(n.id)) {
+      seen.add(n.id);
+      extra.push(n.id);
+    }
+  }
+  return closestIds.concat(extra);
+}
+function selectedCities(nodes, viewIds, cityOf) {
+  return new Set(
+    nodes.filter((n) => viewIds.includes(n.id)).map((n) => cityOf(n))
+  );
+}
+const cityNodes = [
+  { id: "w1", lat: 40.71, lng: -74.0, city: "Westfield, NJ" },
+  { id: "w2", lat: 40.711, lng: -74.0, city: "Westfield, NJ" },
+  { id: "p1", lat: 43.66, lng: -70.25, city: "Portland, ME" },
+  { id: "b1", lat: 42.36, lng: -71.06, city: "Boston, MA" },
+];
+const cityOf = (n) => n.city;
+const added = new Set();
+const baseView = viewWithCities(cityNodes, user, 2, added, cityOf);
+if (baseView.length !== 2 || baseView.includes("p1")) {
+  throw new Error("default view should stay the closest 20 (here 2)");
+}
+const baseSel = selectedCities(cityNodes, baseView, cityOf);
+if (!baseSel.has("Westfield, NJ") || baseSel.has("Portland, ME")) {
+  throw new Error("only in-view cities should look selected");
+}
+added.add("Portland, ME");
+const plusPortland = viewWithCities(cityNodes, user, 2, added, cityOf);
+if (!plusPortland.includes("w1") || !plusPortland.includes("p1")) {
+  throw new Error("selecting a city should add its clips to the view");
+}
+if (!selectedCities(cityNodes, plusPortland, cityOf).has("Portland, ME")) {
+  throw new Error("added city tag should appear selected");
+}
+added.clear();
+const resetView = viewWithCities(cityNodes, user, 2, added, cityOf);
+if (resetView.includes("p1") || resetView.length !== 2) {
+  throw new Error("locate should reset to the closest set and drop added cities");
+}
+
 const at4ft = cameraScale(1.22);
 if (at4ft > 0.6) throw new Error(`4 ft video still too large: ${at4ft}`);
 if (cameraScale(3.2) < 0.99) throw new Error("3.2 m should stay full size");

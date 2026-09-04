@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=87" />
+    <link rel="stylesheet" href="styles.css?v=88" />
   </head>
   <body>
     <div id="app">
@@ -125,6 +125,14 @@
         </div>
 
         <div id="react-burst" class="react-burst" hidden aria-hidden="true">👍</div>
+
+        <div
+          id="field-tags"
+          class="city-tags field-tags"
+          role="toolbar"
+          aria-label="Cities with clips"
+          hidden
+        ></div>
 
         <footer class="hud-bottom">
           <p class="watch-label" id="focus-label">Scan the field</p>
@@ -399,8 +407,15 @@
             </button>
           </header>
           <p class="map-support" id="map-support">
-            All pins · list is the closest 20 to the map center.
+            All pins · tap a city to add its clips.
           </p>
+          <div
+            id="map-tags"
+            class="city-tags map-tags"
+            role="toolbar"
+            aria-label="Cities with clips"
+            hidden
+          ></div>
           <div class="map-viewport" id="map-viewport">
             <div id="leaflet-map" class="leaflet-map"></div>
           </div>
@@ -417,6 +432,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=87"></script>
+    <script type="module" src="app.js?v=88"></script>
   </body>
 </html>

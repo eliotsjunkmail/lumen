@@ -18,8 +18,7 @@ const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 const FEET_PER_MILE = 5280;
 const RADAR_DOT_COUNT = 10;
 const VIEW_CLIP_COUNT = 20;
-const MAP_SUPPORT_NEARBY =
-  "All pins · list is the closest 20 to the map center.";
+const MAP_SUPPORT_NEARBY = "All pins · tap a city to add its clips.";
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
@@ -133,6 +132,8 @@ const mapClose = document.getElementById("map-close");
 const mapViewport = document.getElementById("map-viewport");
 const mapList = document.getElementById("map-list");
 const mapSupport = document.getElementById("map-support");
+const fieldTags = document.getElementById("field-tags");
+const mapTags = document.getElementById("map-tags");
 const guide = document.getElementById("guide");
 const guideArrow = document.getElementById("guide-arrow");
 const guideLabel = document.getElementById("guide-label");
@@ -162,6 +163,7 @@ const state = {
   demoGeoReady: false,
   mapOpen: false,
   selectedClusterId: null,
+  addedCityKeys: new Set(),
   mapArrowEls: new Map(),
   mapRowEls: new Map(),
   mapListAt: 0,
@@ -832,8 +834,6 @@ function layoutCameraCarousel() {
   if (!nearby.length) {
     nearby = state.nodes.filter((n) => n.group && n.inRange !== false);
   }
-  nearby = nearby.slice(0, CAROUSEL_MAX);
-
   nearby.sort((a, b) => {
     const ta = nodeTakenMs(a);
     const tb = nodeTakenMs(b);
@@ -1114,7 +1114,18 @@ function closestGeoNodes(limit) {
 }
 
 function viewClipNodes() {
-  return closestGeoNodes(VIEW_CLIP_COUNT);
+  const closest = closestGeoNodes(VIEW_CLIP_COUNT);
+  if (!state.addedCityKeys.size) return closest;
+  const seen = new Set(closest.map((n) => n.id));
+  const extra = [];
+  for (const n of allGeoNodes()) {
+    const city = nodeCityKey(n);
+    if (city && state.addedCityKeys.has(city) && !seen.has(n.id)) {
+      seen.add(n.id);
+      extra.push(n);
+    }
+  }
+  return closest.concat(extra);
 }
 
 function syncRadarDots() {
@@ -1145,6 +1156,7 @@ function updateGeoAnchors() {
     spreadCoincidentPins();
     syncRadarDots();
     updateRadarMapBackground();
+    syncCityTags();
     return;
   }
 
@@ -1188,6 +1200,7 @@ function updateGeoAnchors() {
   spreadCoincidentPins();
   syncRadarDots();
   updateRadarMapBackground();
+  syncCityTags();
 }
 
 function setStatus(message, ms = 2800) {
@@ -2223,6 +2236,8 @@ function recenterOnUser() {
   }
   state.viewFollowsUser = true;
   state.viewGeo = { lat: you.lat, lng: you.lng };
+  state.addedCityKeys = new Set();
+  cityTagSig = "";
   if (state.leafletMap) {
     const zoom = state.leafletMap.getZoom();
     withMapProgrammatic(() => {
@@ -2237,6 +2252,7 @@ function recenterOnUser() {
   }
   updateGeoAnchors();
   syncLocateButtons();
+  syncCityTags();
   if (mapSupport && state.mapOpen && !state.selectedClusterId) {
     mapSupport.textContent = MAP_SUPPORT_NEARBY;
   }
@@ -2399,9 +2415,14 @@ function formatMapDistance(meters) {
 
 // Reverse-geocode cache: pins cluster, so round to ~100m cells
 const placeCache = new Map();
+let cityTagSig = "";
+
+function placeCacheKey(lat, lng) {
+  return `${lat.toFixed(3)},${lng.toFixed(3)}`;
+}
 
 function lookupPlace(lat, lng) {
-  const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  const key = placeCacheKey(lat, lng);
   if (placeCache.has(key)) return placeCache.get(key);
   placeCache.set(key, null); // pending
 
@@ -2421,10 +2442,113 @@ function lookupPlace(lat, lng) {
       if (place) {
         placeCache.set(key, place);
         if (state.mapOpen) refreshMapList();
+        syncCityTags();
       }
     })
     .catch(() => {});
   return null;
+}
+
+function nodeCityKey(node) {
+  if (node?.lat == null || node.lng == null) return null;
+  const cached = placeCache.get(placeCacheKey(node.lat, node.lng));
+  return cached || null;
+}
+
+function ensureCityPlaces() {
+  for (const node of state.nodes) {
+    if (node.lat == null || node.lng == null) continue;
+    if (!nodeInTimeRange(node)) continue;
+    lookupPlace(node.lat, node.lng);
+  }
+}
+
+function collectCityGroups() {
+  const origin = viewOrigin();
+  const groups = new Map();
+  for (const node of allGeoNodes()) {
+    const key = nodeCityKey(node);
+    if (!key) continue;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        key,
+        label: key,
+        nodes: [],
+        lat: 0,
+        lng: 0,
+      };
+      groups.set(key, group);
+    }
+    group.nodes.push(node);
+    group.lat += node.lat;
+    group.lng += node.lng;
+  }
+  const list = [...groups.values()].map((g) => {
+    const lat = g.lat / g.nodes.length;
+    const lng = g.lng / g.nodes.length;
+    const dist = origin
+      ? distanceMeters(origin.lat, origin.lng, lat, lng)
+      : 0;
+    return { ...g, lat, lng, dist };
+  });
+  list.sort((a, b) => a.dist - b.dist || a.label.localeCompare(b.label));
+  return list;
+}
+
+function renderCityTagBar(el, groups, viewIds) {
+  if (!el) return;
+  el.replaceChildren();
+  for (const group of groups) {
+    const on = group.nodes.some((n) => viewIds.has(n.id));
+    const pinned = state.addedCityKeys.has(group.key);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "city-tag";
+    if (on) btn.classList.add("is-on");
+    if (pinned) btn.classList.add("is-pinned");
+    btn.setAttribute("aria-pressed", String(on));
+    btn.textContent = group.label;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleCityTag(group.key);
+    });
+    el.appendChild(btn);
+  }
+  el.hidden = !groups.length;
+}
+
+function syncCityTags() {
+  ensureCityPlaces();
+  const groups = collectCityGroups();
+  const viewIds = new Set(viewClipNodes().map((n) => n.id));
+  const sig = groups
+    .map(
+      (g) =>
+        `${g.key}:${g.nodes.some((n) => viewIds.has(n.id)) ? 1 : 0}:${
+          state.addedCityKeys.has(g.key) ? 1 : 0
+        }`
+    )
+    .join("|");
+  if (sig === cityTagSig && fieldTags?.childElementCount === groups.length) {
+    return;
+  }
+  cityTagSig = sig;
+  renderCityTagBar(fieldTags, groups, viewIds);
+  renderCityTagBar(mapTags, groups, viewIds);
+}
+
+function toggleCityTag(key) {
+  if (!key) return;
+  if (state.addedCityKeys.has(key)) state.addedCityKeys.delete(key);
+  else state.addedCityKeys.add(key);
+  cityTagSig = "";
+  updateGeoAnchors();
+  syncCityTags();
+  if (state.mapOpen) {
+    refreshMapList();
+    syncLeafletMarkers();
+  }
 }
 
 function buildMapListRow(node) {
