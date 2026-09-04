@@ -493,9 +493,65 @@ button {
 
 .watch-label {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+  opacity: 0.72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.town-slot {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 0.12rem;
+}
+
+.town-pick {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.town-pick select {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 1.25rem 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--foam);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.town-pick::after {
+  content: "";
+  position: absolute;
+  right: 0.15rem;
+  top: 50%;
+  width: 0.42rem;
+  height: 0.42rem;
+  border-right: 2px solid var(--signal);
+  border-bottom: 2px solid var(--signal);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+
+.town-pick select:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .hud-actions {

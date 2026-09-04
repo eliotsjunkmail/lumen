@@ -54,6 +54,48 @@ if (JSON.stringify(atNyc) !== JSON.stringify(closest(nodes, user, 20))) {
   throw new Error("camera and list must share the same closest 20");
 }
 
+function clipsInTown(nodes, town, cityOf) {
+  return nodes.filter((n) => cityOf(n) === town).map((n) => n.id);
+}
+function availableTowns(nodes, cityOf, extra) {
+  const set = new Set(nodes.map(cityOf).filter(Boolean));
+  if (extra) set.add(extra);
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+const townNodes = [
+  { id: "w1", city: "Westfield, NJ" },
+  { id: "w2", city: "Westfield, NJ" },
+  { id: "p1", city: "Portland, ME" },
+  { id: "b1", city: "Boston, MA" },
+  { id: "c1", city: "Township of Coolbaugh, PA" },
+];
+const cityOf = (n) => n.city;
+const westfield = clipsInTown(townNodes, "Westfield, NJ", cityOf);
+if (westfield.join("|") !== "w1|w2") {
+  throw new Error(`Westfield should keep only its clips — got ${westfield}`);
+}
+if (clipsInTown(townNodes, "Boston, MA", cityOf).join("|") !== "b1") {
+  throw new Error("Boston should be a single clip");
+}
+const menu = availableTowns(townNodes, cityOf, "Jersey City, NJ");
+if (menu[0] !== "Boston, MA") throw new Error("towns should sort A–Z");
+if (
+  menu.join("|") !==
+  "Boston, MA|Jersey City, NJ|Portland, ME|Township of Coolbaugh, PA|Westfield, NJ"
+) {
+  throw new Error(`town menu order — got ${menu.join("|")}`);
+}
+let selectedTown = "Jersey City, NJ";
+selectedTown = "Westfield, NJ";
+if (clipsInTown(townNodes, selectedTown, cityOf).length !== 2) {
+  throw new Error("picking a town should switch the clips");
+}
+selectedTown = "Jersey City, NJ";
+if (clipsInTown(townNodes, selectedTown, cityOf).length !== 0) {
+  throw new Error("locate town with no clips should show none");
+}
+
 const at4ft = cameraScale(1.22);
 if (at4ft > 0.6) throw new Error(`4 ft video still too large: ${at4ft}`);
 if (cameraScale(3.2) < 0.99) throw new Error("3.2 m should stay full size");

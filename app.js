@@ -19,7 +19,7 @@ const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 const FEET_PER_MILE = 5280;
 const RADAR_DOT_COUNT = 10;
 const VIEW_CLIP_COUNT = 20;
-const MAP_SUPPORT_NEARBY = "All pins · tap a pin to see its clips.";
+const MAP_SUPPORT_NEARBY = "Camera shows this town · tap a pin to see its clips.";
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
@@ -83,6 +83,7 @@ const settingsBtn = document.getElementById("settings-btn");
 const settingsModal = document.getElementById("settings-modal");
 const settingsClose = document.getElementById("settings-close");
 const focusLabel = document.getElementById("focus-label");
+const townSelect = document.getElementById("town-select");
 const watchBtn = document.getElementById("watch-btn");
 const statusEl = document.getElementById("status");
 const radarDots = document.getElementById("radar-dots");
@@ -168,6 +169,8 @@ const state = {
   demoGeoReady: false,
   mapOpen: false,
   selectedClusterId: null,
+  selectedTown: null,
+  townFollowsUser: true,
   mapArrowEls: new Map(),
   mapRowEls: new Map(),
   mapListAt: 0,
@@ -1203,11 +1206,15 @@ function closestGeoNodes(limit) {
 }
 
 function viewClipNodes() {
-  return closestGeoNodes(VIEW_CLIP_COUNT);
+  const geo = allGeoNodes();
+  if (!state.selectedTown) return geo.slice(0, VIEW_CLIP_COUNT);
+  return geo
+    .filter((n) => nodeTown(n) === state.selectedTown)
+    .slice(0, VIEW_CLIP_COUNT);
 }
 
 function syncRadarDots() {
-  const keep = new Set(closestGeoNodes(RADAR_DOT_COUNT).map((n) => n.id));
+  const keep = new Set(viewClipNodes().slice(0, RADAR_DOT_COUNT).map((n) => n.id));
   for (const node of state.nodes) {
     if (!node.radar) continue;
     node.radar.style.display = keep.has(node.id) ? "" : "none";
@@ -1216,7 +1223,7 @@ function syncRadarDots() {
 
 function radarSpanM() {
   const origin = viewOrigin();
-  const closest = closestGeoNodes(RADAR_DOT_COUNT);
+  const closest = viewClipNodes().slice(0, RADAR_DOT_COUNT);
   if (!closest.length) return 40;
   let farthest = 25;
   for (const n of closest) {
@@ -1230,10 +1237,12 @@ function radarSpanM() {
 
 function updateGeoAnchors() {
   const origin = viewOrigin();
+  ensureTownPlaces();
   if (!origin) {
     spreadCoincidentPins();
     syncRadarDots();
     updateRadarMapBackground();
+    syncTownDropdown();
     return;
   }
 
@@ -1270,13 +1279,14 @@ function updateGeoAnchors() {
         ? taken
           ? `Outside time frame · ${taken}`
           : "Outside time frame"
-        : `Farther than the closest 20 (${feet} ft)`;
+        : `Outside this town (${feet} ft)`;
     if (!inRange && state.focused === node) setFocus(null);
   }
 
   spreadCoincidentPins();
   syncRadarDots();
   updateRadarMapBackground();
+  syncTownDropdown();
 }
 
 function setStatus(message, ms = 2800) {
@@ -2381,6 +2391,11 @@ function recenterOnUser() {
   }
   state.viewFollowsUser = true;
   state.viewGeo = { lat: you.lat, lng: you.lng };
+  state.townFollowsUser = true;
+  lookupPlace(you.lat, you.lng);
+  const here = userTownName();
+  if (here) state.selectedTown = here;
+  townSelectSig = "";
   if (state.leafletMap) {
     const zoom = state.leafletMap.getZoom();
     withMapProgrammatic(() => {
@@ -2582,11 +2597,112 @@ function lookupPlace(lat, lng) {
         city && stateCode ? `${city}, ${stateCode}` : city || stateCode;
       if (place) {
         placeCache.set(key, place);
+        const you = gpsOrigin();
+        if (
+          you &&
+          placeCacheKey(you.lat, you.lng) === key &&
+          state.townFollowsUser
+        ) {
+          state.selectedTown = place;
+        }
         if (state.mapOpen) refreshMapList();
+        syncTownDropdown();
+        updateGeoAnchors();
       }
     })
     .catch(() => {});
   return null;
+}
+
+function nodeTown(node) {
+  if (node?.lat == null || node.lng == null) return null;
+  return placeCache.get(placeCacheKey(node.lat, node.lng)) || null;
+}
+
+function userTownName() {
+  const you = gpsOrigin();
+  if (!you) return null;
+  return placeCache.get(placeCacheKey(you.lat, you.lng)) || null;
+}
+
+function collectTownNames() {
+  const names = new Set();
+  const here = userTownName();
+  if (here) names.add(here);
+  if (state.selectedTown) names.add(state.selectedTown);
+  for (const node of allGeoNodes()) {
+    const town = nodeTown(node);
+    if (town) names.add(town);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+function ensureTownPlaces() {
+  const you = gpsOrigin();
+  if (you) lookupPlace(you.lat, you.lng);
+  for (const node of state.nodes) {
+    if (node.lat == null || node.lng == null) continue;
+    if (!nodeInTimeRange(node)) continue;
+    lookupPlace(node.lat, node.lng);
+  }
+  if (state.townFollowsUser) {
+    const here = userTownName();
+    if (here) state.selectedTown = here;
+  }
+}
+
+let townSelectSig = "";
+
+function syncTownDropdown() {
+  if (!townSelect) return;
+  const towns = collectTownNames();
+  const selected = state.selectedTown || "";
+  const locating = Boolean(state.townFollowsUser && !selected);
+  const sig = `${towns.join("|")}@${selected}@${locating ? 1 : 0}`;
+  if (sig === townSelectSig) return;
+  townSelectSig = sig;
+  townSelect.replaceChildren();
+  if (!towns.length && locating) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Locating…";
+    townSelect.appendChild(opt);
+    townSelect.disabled = true;
+    townSelect.value = "";
+    return;
+  }
+  townSelect.disabled = false;
+  if (locating) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Locating…";
+    townSelect.appendChild(opt);
+  }
+  for (const name of towns) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    townSelect.appendChild(opt);
+  }
+  townSelect.value = selected && towns.includes(selected) ? selected : "";
+}
+
+function selectTown(name, { fromUser = false } = {}) {
+  const next = String(name || "").trim();
+  if (!next) return;
+  if (fromUser) state.townFollowsUser = false;
+  if (state.selectedTown === next) {
+    syncTownDropdown();
+    return;
+  }
+  state.selectedTown = next;
+  townSelectSig = "";
+  syncTownDropdown();
+  updateGeoAnchors();
+  if (state.mapOpen) {
+    refreshMapList();
+    syncLeafletMarkers();
+  }
 }
 
 function buildMapListRow(node) {
@@ -3675,6 +3791,13 @@ radar?.addEventListener("click", (e) => {
 fieldLocate?.addEventListener("click", (e) => {
   e.stopPropagation();
   recenterOnUser();
+});
+townSelect?.addEventListener("pointerdown", (e) => e.stopPropagation());
+townSelect?.addEventListener("touchstart", (e) => e.stopPropagation(), {
+  passive: true,
+});
+townSelect?.addEventListener("change", () => {
+  selectTown(townSelect.value, { fromUser: true });
 });
 mapClose?.addEventListener("click", closeMapModal);
 mapBackdrop?.addEventListener("click", closeMapModal);
