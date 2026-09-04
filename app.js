@@ -11,6 +11,11 @@ import {
 import { readVideoCaptureMeta, formatTakenLabel } from "./video-meta.js";
 import { coverFlowSlots } from "./cover-flow.js";
 import { formatTownName } from "./place-name.js";
+import {
+  carouselTiltAmount,
+  carouselRowShiftY,
+  carouselRowSpan,
+} from "./carousel-tilt.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
 const CAMERA_RANGE_MAX_FT = 10 * 5280;
@@ -199,6 +204,8 @@ const state = {
   carouselFwdX: null,
   carouselFwdZ: null,
   carouselYearMarks: [],
+  carouselLookPitch: 0,
+  carouselTiltT: 0,
   fovPinched: false,
 };
 
@@ -846,7 +853,13 @@ function setVideoSize(size, { persist = true } = {}) {
   const next = size === "small" ? "small" : "large";
   const changed = state.videoSize !== next;
   state.videoSize = next;
-  if (changed) state.fovPinched = false;
+  if (changed) {
+    state.fovPinched = false;
+    if (next === "large") {
+      state.offsetPitch = 0;
+      state.carouselTiltT = 0;
+    }
+  }
   applyLayoutFov();
   syncVideoSizeControls();
   if (persist) {
@@ -1031,6 +1044,36 @@ function layoutCameraCarousel() {
       top.anchorY = CAROUSEL_FLOOR_Y + hb + CAROUSEL_ROW_GAP_M + ht * 0.5;
     }
   });
+
+  let shiftY = 0;
+  if (twoRow) {
+    let bottomY = 0;
+    let topY = 0;
+    let pairCount = 0;
+    for (const col of columns) {
+      if (!col[1]) continue;
+      bottomY += col[0].anchorY;
+      topY += col[1].anchorY;
+      pairCount += 1;
+    }
+    if (pairCount) {
+      bottomY /= pairCount;
+      topY /= pairCount;
+      const camY = camera?.position.y ?? 1.4;
+      const span = carouselRowSpan(bottomY, topY, radius);
+      const targetT = carouselTiltAmount(state.carouselLookPitch, span);
+      state.carouselTiltT += (targetT - state.carouselTiltT) * 0.22;
+      shiftY = carouselRowShiftY(camY, bottomY, topY, state.carouselTiltT);
+      for (const col of columns) {
+        for (const node of col) node.anchorY += shiftY;
+      }
+    } else {
+      state.carouselTiltT = 0;
+    }
+  } else {
+    state.carouselTiltT = 0;
+  }
+
   syncCarouselYearMarks(
     columns.map((col) => col[0]),
     angles,
@@ -1040,7 +1083,8 @@ function layoutCameraCarousel() {
     fx,
     fz,
     rx,
-    rz
+    rz,
+    shiftY
   );
 }
 
@@ -1194,7 +1238,8 @@ function syncCarouselYearMarks(
   fx,
   fz,
   rx,
-  rz
+  rz,
+  shiftY = 0
 ) {
   if (state.cameraLayout !== "carousel" || !scene) {
     hideCarouselYearMarks();
@@ -1239,7 +1284,7 @@ function syncCarouselYearMarks(
       rx,
       rz
     );
-    mark.position.set(p.x, CAROUSEL_FLOOR_Y - 0.55, p.z);
+    mark.position.set(p.x, CAROUSEL_FLOOR_Y - 0.55 + shiftY, p.z);
     mark.scale.setScalar(1.7);
     _groundEuler.set(0, yawTowardOrigin(p.x, p.z, originX, originZ), 0, "YXZ");
     mark.quaternion.setFromEuler(_groundEuler);
@@ -2011,9 +2056,8 @@ function setDeviceQuaternion(alphaDeg, betaDeg, gammaDeg, compassDeg) {
 }
 
 function updateCameraRig(dt) {
-  const pitch = state.cameraLayout === "carousel" ? 0 : state.offsetPitch;
   _offsetQuat.setFromEuler(
-    new THREE.Euler(pitch, state.offsetYaw, 0, "YXZ")
+    new THREE.Euler(state.offsetPitch, state.offsetYaw, 0, "YXZ")
   );
 
   if (state.orientReady) {
@@ -2025,8 +2069,9 @@ function updateCameraRig(dt) {
   }
 
   if (state.cameraLayout === "carousel") {
-    // Yaw only so the ring stays level with the ground when the phone tilts.
+    // Keep the ring level; two-row mode uses this pitch to slide rows into the viewfinder.
     _euler.setFromQuaternion(_targetQuat, "YXZ");
+    state.carouselLookPitch = _euler.x;
     _euler.x = 0;
     _euler.z = 0;
     _targetQuat.setFromEuler(_euler);
@@ -3513,8 +3558,16 @@ function bindLookControls() {
     // Horizontal only. In carousel, drag turns you inside the ring
     // so the photos follow the finger; in place mode, drag looks around.
     const dx = (x - prev.x) * 0.005;
-    if (state.cameraLayout === "carousel") state.offsetYaw += dx;
-    else state.offsetYaw -= dx;
+    const dy = (y - prev.y) * 0.005;
+    if (state.cameraLayout === "carousel") {
+      state.offsetYaw += dx;
+      if (carouselIsTwoRow()) {
+        state.offsetPitch += dy;
+        state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -0.45, 0.12);
+      }
+    } else {
+      state.offsetYaw -= dx;
+    }
   };
 
   const onUp = (id, x, y) => {
@@ -4892,9 +4945,15 @@ window.addEventListener("keydown", (e) => {
   const step = 0.08;
   if (e.key === "ArrowLeft") state.offsetYaw += step;
   if (e.key === "ArrowRight") state.offsetYaw -= step;
-  if (e.key === "ArrowUp") state.offsetPitch += step * 0.7;
-  if (e.key === "ArrowDown") state.offsetPitch -= step * 0.7;
-  state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -1.2, 1.2);
+  if (carouselIsTwoRow()) {
+    if (e.key === "ArrowUp") state.offsetPitch -= step * 0.7;
+    if (e.key === "ArrowDown") state.offsetPitch += step * 0.7;
+    state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -0.45, 0.12);
+  } else {
+    if (e.key === "ArrowUp") state.offsetPitch += step * 0.7;
+    if (e.key === "ArrowDown") state.offsetPitch -= step * 0.7;
+    state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -1.2, 1.2);
+  }
   if (e.key === "Enter") {
     const node = resolveWatchNode();
     if (node) openTheater(node);
