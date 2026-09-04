@@ -25,6 +25,7 @@ const CAROUSEL_MAX = 12;
 const CAROUSEL_GAP_M = 0.96;
 const CAROUSEL_SCALE = 3;
 const CAROUSEL_RADIUS_MAX = 7.8;
+const CAROUSEL_FLOOR_Y = 0.05;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
@@ -657,6 +658,7 @@ function syncLayoutControls() {
   layoutCarouselBtn?.classList.toggle("is-on", carousel);
   layoutPlaceBtn?.setAttribute("aria-pressed", String(!carousel));
   layoutCarouselBtn?.setAttribute("aria-pressed", String(carousel));
+  field?.classList.toggle("is-carousel", carousel);
 }
 
 function captureCarouselHeading() {
@@ -1025,15 +1027,6 @@ function syncCarouselYearMarks(
     const aFirst = angles[group.indices[0]];
     const aLast = angles[group.indices[group.indices.length - 1]];
     const alpha = (aFirst + aLast) * 0.5;
-    const carouselY = camera ? camera.position.y : 1.4;
-    let minBottom = carouselY;
-    for (const idx of group.indices) {
-      const node = nearby[idx];
-      const h =
-        (node.screen?.geometry?.parameters?.height || 1.35) * CAROUSEL_SCALE;
-      const bottom = carouselY - h * 0.5;
-      if (bottom < minBottom) minBottom = bottom;
-    }
     const p = pointOnCarouselRing(
       alpha,
       radius,
@@ -1044,7 +1037,7 @@ function syncCarouselYearMarks(
       rx,
       rz
     );
-    mark.position.set(p.x, minBottom - 0.36 * CAROUSEL_SCALE, p.z);
+    mark.position.set(p.x, CAROUSEL_FLOOR_Y - 0.55, p.z);
     mark.scale.setScalar(2.2);
     _groundEuler.set(0, yawTowardOrigin(p.x, p.z, originX, originZ), 0, "YXZ");
     mark.quaternion.setFromEuler(_groundEuler);
@@ -1801,13 +1794,14 @@ function cameraVideoScale(node) {
 function updateNodes(t, dt) {
   const carousel = state.cameraLayout === "carousel";
   if (carousel) layoutCameraCarousel();
-  const carouselY = camera ? camera.position.y : 1.4;
   for (const node of state.nodes) {
     if (node.anchorX != null) node.group.position.x = node.anchorX;
     if (node.anchorZ != null) node.group.position.z = node.anchorZ;
 
     if (carousel) {
-      node.group.position.y = carouselY;
+      const h =
+        (node.screen?.geometry?.parameters?.height || 1.35) * CAROUSEL_SCALE;
+      node.group.position.y = CAROUSEL_FLOOR_Y + h * 0.5;
       if (node.beacon) node.beacon.visible = false;
     } else if (node.kind === "image") {
       if (node.flying) {

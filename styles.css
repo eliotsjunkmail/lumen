@@ -688,6 +688,10 @@ button {
   stroke-linejoin: round;
 }
 
+.field.is-carousel .guide {
+  display: none;
+}
+
 .guide-label {
   margin: 0;
   padding: 2px 9px;
