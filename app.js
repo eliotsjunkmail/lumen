@@ -3211,15 +3211,10 @@ function setFocus(node) {
     focusLabel.textContent = node.thumbs
       ? `${node.title} 👍${node.thumbs > 1 ? node.thumbs : ""}`
       : node.title;
-    watchBtn.disabled = false;
-    watchBtn.textContent = node.kind === "image" ? "View" : "Watch";
     ensurePreview(node);
     pausePreviews(node.id);
   } else {
     focusLabel.textContent = "Scan the field";
-    // Keep Watch tappable so we can prompt to aim (disabled buttons eat taps on iOS)
-    watchBtn.disabled = false;
-    watchBtn.textContent = "Watch";
     pausePreviews(null);
   }
   updateDeleteControls();
@@ -3549,7 +3544,7 @@ function bindLookControls() {
 
     const node = pickNodeAt(x, y) || pickCenter() || state.focused;
     if (node) openTheater(node);
-    else setStatus("Aim the brackets at a pin, then tap Watch", 3200);
+    else setStatus("Tap a clip to watch", 3200);
   };
 
   canvas.addEventListener("pointerdown", (e) => {
@@ -3952,10 +3947,10 @@ async function enterField() {
 }
 
 enterBtn.addEventListener("click", enterField);
-watchBtn.addEventListener("click", () => {
+watchBtn?.addEventListener("click", () => {
   const node = resolveWatchNode();
   if (node) openTheater(node);
-  else setStatus("Aim the brackets at a pin, then tap Watch", 3200);
+  else setStatus("Tap a clip to watch", 3200);
 });
 theaterClose.addEventListener("click", closeTheaterMode);
 theaterDone?.addEventListener("click", closeTheaterMode);

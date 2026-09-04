@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=110" />
+    <link rel="stylesheet" href="styles.css?v=111" />
   </head>
   <body>
     <div id="app">
@@ -133,36 +133,32 @@
 
           <div id="react-burst" class="react-burst" hidden aria-hidden="true">👍</div>
 
+          <button type="button" id="add-btn" class="add-fab" aria-label="Add" title="Add">
+            <span aria-hidden="true">+</span>
+          </button>
+          <input
+            id="video-input-field"
+            class="file-input"
+            type="file"
+            accept="video/*"
+            multiple
+            hidden
+          />
+          <input
+            id="video-input-capture"
+            class="file-input"
+            type="file"
+            accept="video/*"
+            capture="environment"
+            hidden
+          />
+
           <footer class="hud-bottom">
           <div class="town-slot">
             <label class="town-pick">
               <select id="town-select" aria-label="Town"></select>
             </label>
             <p class="watch-label" id="focus-label">Scan the field</p>
-          </div>
-          <div class="hud-actions">
-            <button type="button" id="add-btn" class="upload-btn" title="Add">
-              Add
-            </button>
-            <input
-              id="video-input-field"
-              class="file-input"
-              type="file"
-              accept="video/*"
-              multiple
-              hidden
-            />
-            <input
-              id="video-input-capture"
-              class="file-input"
-              type="file"
-              accept="video/*"
-              capture="environment"
-              hidden
-            />
-            <button type="button" id="watch-btn" class="watch-btn" disabled>
-              Watch
-            </button>
           </div>
         </footer>
 
@@ -453,6 +449,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=110"></script>
+    <script type="module" src="app.js?v=111"></script>
   </body>
 </html>
