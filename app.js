@@ -771,7 +771,7 @@ function spreadCoincidentPins() {
   }
 }
 
-/** Line in-range clips up in front of the camera, oldest on the left. */
+/** Ring in-range clips around the camera, oldest left of heading, newer right. */
 function layoutCameraCarousel() {
   const nearby = state.nodes
     .filter((n) => n.group && n.inRange !== false)
@@ -800,6 +800,49 @@ function layoutCameraCarousel() {
     return;
   }
 
+  const { fx, fz, rx, rz } = carouselRingVectors();
+  const originX = camera ? camera.position.x : 0;
+  const originZ = camera ? camera.position.z : 0;
+  const widths = nearby.map((node) => carouselNodeWidth(node));
+  const { radius, angles } = carouselRingLayout(widths);
+
+  nearby.forEach((node, i) => {
+    const p = pointOnCarouselRing(
+      angles[i],
+      radius,
+      originX,
+      originZ,
+      fx,
+      fz,
+      rx,
+      rz
+    );
+    node.anchorX = p.x;
+    node.anchorZ = p.z;
+  });
+  syncCarouselYearMarks(
+    nearby,
+    angles,
+    radius,
+    originX,
+    originZ,
+    fx,
+    fz,
+    rx,
+    rz
+  );
+}
+
+function carouselNodeWidth(node) {
+  const sw = node.screen?.geometry?.parameters?.width || 1.65;
+  const fw =
+    node.kind === "video"
+      ? node.frame?.geometry?.parameters?.width || sw + 0.14
+      : 0;
+  return Math.max(sw, fw, 1.5);
+}
+
+function carouselRingVectors() {
   if (state.carouselFwdX == null || state.carouselFwdZ == null) {
     captureCarouselHeading();
   }
@@ -813,40 +856,58 @@ function layoutCameraCarousel() {
     fx /= flen;
     fz /= flen;
   }
-  const rx = -fz;
-  const rz = fx;
+  return { fx, fz, rx: -fz, rz: fx };
+}
 
-  const originX = camera ? camera.position.x : 0;
-  const originZ = camera ? camera.position.z : 0;
-  const widths = nearby.map((node) => carouselNodeWidth(node));
-  const slots = [];
+function carouselChordAngle(width, radius) {
+  const half = Math.max(0, width) * 0.5;
+  if (radius <= 1e-6) return Math.PI;
+  return 2 * Math.asin(Math.min(0.999, half / radius));
+}
+
+/** Pack clip widths onto a full circle around the viewer, centered on heading. */
+function carouselRingLayout(widths, distM = CAROUSEL_DIST_M, gapM = CAROUSEL_GAP_M) {
+  const n = widths.length;
+  if (!n) return { radius: distM, angles: [] };
+
+  let radius = Math.max(0.5, distM);
+  let itemAng = [];
+  let gapAng = 0;
+  let needed = 0;
+  for (let i = 0; i < 12; i += 1) {
+    itemAng = widths.map((w) => carouselChordAngle(w, radius));
+    gapAng = gapM / radius;
+    needed = itemAng.reduce((s, a) => s + a, 0) + n * gapAng;
+    if (needed <= Math.PI * 2 + 1e-6) break;
+    radius *= needed / (Math.PI * 2);
+  }
+
+  const extra = Math.max(0, (Math.PI * 2 - needed) / n);
+  const angles = [];
   let cursor = 0;
-  nearby.forEach((_, i) => {
-    slots.push(cursor + widths[i] * 0.5);
-    cursor += widths[i] + CAROUSEL_GAP_M;
-  });
-  const mid = (cursor - CAROUSEL_GAP_M) * 0.5;
-  nearby.forEach((node, i) => {
-    const t = slots[i] - mid;
-    node.anchorX = originX + fx * CAROUSEL_DIST_M + rx * t;
-    node.anchorZ = originZ + fz * CAROUSEL_DIST_M + rz * t;
-  });
-  syncCarouselYearMarks(nearby, slots, mid, originX, originZ, fx, fz, rx, rz);
+  for (let i = 0; i < n; i += 1) {
+    cursor += itemAng[i] * 0.5;
+    angles.push(cursor);
+    cursor += itemAng[i] * 0.5 + gapAng + extra;
+  }
+  const mid = (angles[0] + angles[n - 1]) * 0.5;
+  for (let i = 0; i < n; i += 1) angles[i] -= mid;
+  return { radius, angles };
 }
 
-function carouselNodeWidth(node) {
-  const sw = node.screen?.geometry?.parameters?.width || 1.65;
-  const fw =
-    node.kind === "video"
-      ? node.frame?.geometry?.parameters?.width || sw + 0.14
-      : 0;
-  return Math.max(sw, fw, 1.5);
+function pointOnCarouselRing(alpha, radius, originX, originZ, fx, fz, rx, rz) {
+  const ca = Math.cos(alpha);
+  const sa = Math.sin(alpha);
+  return {
+    x: originX + (fx * ca + rx * sa) * radius,
+    z: originZ + (fz * ca + rz * sa) * radius,
+  };
 }
 
-function carouselFacingYaw() {
-  const fx = state.carouselFwdX ?? 0;
-  const fz = state.carouselFwdZ ?? -1;
-  return Math.atan2(-fx, -fz);
+function yawTowardOrigin(x, z, originX, originZ) {
+  const dx = originX - x;
+  const dz = originZ - z;
+  return dx * dx + dz * dz > 1e-8 ? Math.atan2(dx, dz) : 0;
 }
 
 function nodeTakenYear(node) {
@@ -895,7 +956,17 @@ function hideCarouselYearMarks() {
   for (const mark of state.carouselYearMarks) mark.visible = false;
 }
 
-function syncCarouselYearMarks(nearby, slots, mid, originX, originZ, fx, fz, rx, rz) {
+function syncCarouselYearMarks(
+  nearby,
+  angles,
+  radius,
+  originX,
+  originZ,
+  fx,
+  fz,
+  rx,
+  rz
+) {
   if (state.cameraLayout !== "carousel" || !scene) {
     hideCarouselYearMarks();
     return;
@@ -912,18 +983,15 @@ function syncCarouselYearMarks(nearby, slots, mid, originX, originZ, fx, fz, rx,
 
   while (state.carouselYearMarks.length < groups.length) ensureCarouselYearMark();
 
-  const yaw = carouselFacingYaw();
-  _groundEuler.set(0, yaw, 0, "YXZ");
-
   state.carouselYearMarks.forEach((mark, i) => {
     const group = groups[i];
     if (!group) {
       mark.visible = false;
       return;
     }
-    const tFirst = slots[group.indices[0]] - mid;
-    const tLast = slots[group.indices[group.indices.length - 1]] - mid;
-    const t = (tFirst + tLast) * 0.5;
+    const aFirst = angles[group.indices[0]];
+    const aLast = angles[group.indices[group.indices.length - 1]];
+    const alpha = (aFirst + aLast) * 0.5;
     let minBottom = 0.7;
     for (const idx of group.indices) {
       const node = nearby[idx];
@@ -931,11 +999,18 @@ function syncCarouselYearMarks(nearby, slots, mid, originX, originZ, fx, fz, rx,
       const bottom = (node.baseY || 1.4) - h * 0.5;
       if (bottom < minBottom) minBottom = bottom;
     }
-    mark.position.set(
-      originX + fx * CAROUSEL_DIST_M + rx * t,
-      minBottom - 0.48,
-      originZ + fz * CAROUSEL_DIST_M + rz * t
+    const p = pointOnCarouselRing(
+      alpha,
+      radius,
+      originX,
+      originZ,
+      fx,
+      fz,
+      rx,
+      rz
     );
+    mark.position.set(p.x, minBottom - 0.48, p.z);
+    _groundEuler.set(0, yawTowardOrigin(p.x, p.z, originX, originZ), 0, "YXZ");
     mark.quaternion.setFromEuler(_groundEuler);
     if (mark.userData.year !== group.year) {
       const prev = mark.material.map;
@@ -1746,20 +1821,21 @@ function updateNodes(t, dt) {
 
     // Stand upright on the ground plane and only yaw toward the viewer.
     // Pitch/roll stay 0 so clips stay level when the phone tilts.
+    // In carousel they face inward on the ring; in place mode they face you.
     alignNodeToGround(node);
   }
 }
 
 function alignNodeToGround(node) {
   if (!camera || !node?.group) return;
-  let yaw;
-  if (state.cameraLayout === "carousel") {
-    yaw = carouselFacingYaw();
-  } else {
-    const dx = camera.position.x - node.group.position.x;
-    const dz = camera.position.z - node.group.position.z;
-    yaw = dx * dx + dz * dz > 1e-8 ? Math.atan2(dx, dz) : 0;
-  }
+  const originX = camera.position.x;
+  const originZ = camera.position.z;
+  const yaw = yawTowardOrigin(
+    node.group.position.x,
+    node.group.position.z,
+    originX,
+    originZ
+  );
   _groundEuler.set(0, yaw, 0, "YXZ");
   node.group.quaternion.setFromEuler(_groundEuler);
   if (node.kind === "video") {
@@ -2756,8 +2832,8 @@ function bindLookControls() {
     if (ptrStart && Math.hypot(x - ptrStart.x, y - ptrStart.y) > 10) {
       ptrMoved = true;
     }
-    // Horizontal only. In carousel, the strip follows the finger;
-    // in place mode, drag looks around the world.
+    // Horizontal only. In carousel, drag turns you inside the ring
+    // so the photos follow the finger; in place mode, drag looks around.
     const dx = (x - prev.x) * 0.005;
     if (state.cameraLayout === "carousel") state.offsetYaw += dx;
     else state.offsetYaw -= dx;
