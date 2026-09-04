@@ -1,7 +1,8 @@
 /** Map look-down-positive pitch to 0 (bottom row) … 1 (top row). */
-export function carouselTiltAmount(pitch, span) {
+export function carouselTiltAmount(pitch, span, gain = 1) {
   if (!(span > 1e-6)) return 0;
-  return Math.min(1, Math.max(0, -pitch / span));
+  const g = Number.isFinite(gain) && gain > 0 ? gain : 1;
+  return Math.min(1, Math.max(0, (-pitch * g) / span));
 }
 
 /** Vertical shift so t=0 centers the bottom row on the camera, t=1 the top. */

@@ -21,6 +21,12 @@ if (Math.abs(carouselTiltAmount(-0.1, 0.2) - 0.5) > 1e-9) {
 if (carouselTiltAmount(-1, 0.2) !== 1) {
   throw new Error("extra look-up should clamp to the top row");
 }
+if (Math.abs(carouselTiltAmount(-0.1, 0.2, 2) - 1) > 1e-9) {
+  throw new Error("tilt gain should reach the top row with less lean");
+}
+if (Math.abs(carouselTiltAmount(-0.05, 0.2, 2) - 0.5) > 1e-9) {
+  throw new Error("tilt gain should scale look-up travel");
+}
 
 const camY = 1.4;
 const bottomY = 1.0;

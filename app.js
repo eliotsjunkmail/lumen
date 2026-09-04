@@ -52,6 +52,12 @@ const CAROUSEL_FLOOR_Y = 0.05;
 const CAROUSEL_ROW_GAP_M = 0.85;
 /** Sit with the viewfinder, slightly above mid-screen. */
 const CAROUSEL_DROP_Y = -0.2;
+/** Extra downward drag so the top row can reach the viewfinder. */
+const CAROUSEL_DRAG_Y_MIN = -3.2;
+const CAROUSEL_DRAG_Y_MAX = 2.4;
+const CAROUSEL_DRAG_LIFT = 0.007;
+/** Phone tilt moves the two-row ring farther per degree. */
+const CAROUSEL_TILT_GAIN = 2.1;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
@@ -1027,7 +1033,11 @@ function layoutCameraCarousel() {
       topY /= pairCount;
       const camY = camera?.position.y ?? 1.4;
       const span = carouselRowSpan(bottomY, topY, radius);
-      const targetT = carouselTiltAmount(state.carouselLookPitch, span);
+      const targetT = carouselTiltAmount(
+        state.carouselLookPitch,
+        span,
+        CAROUSEL_TILT_GAIN
+      );
       state.carouselTiltT += (targetT - state.carouselTiltT) * 0.22;
       shiftY = carouselRowShiftY(camY, bottomY, topY, state.carouselTiltT);
     } else {
@@ -3698,8 +3708,12 @@ function bindLookControls() {
     const dx = (x - prev.x) * 0.005;
     if (state.cameraLayout === "carousel") {
       state.offsetYaw += dx;
-      state.carouselDragY += carouselDragLiftDelta(y - prev.y) * 0.004;
-      state.carouselDragY = THREE.MathUtils.clamp(state.carouselDragY, -1.4, 1.4);
+      state.carouselDragY += carouselDragLiftDelta(y - prev.y) * CAROUSEL_DRAG_LIFT;
+      state.carouselDragY = THREE.MathUtils.clamp(
+        state.carouselDragY,
+        CAROUSEL_DRAG_Y_MIN,
+        CAROUSEL_DRAG_Y_MAX
+      );
     } else {
       state.offsetYaw -= dx;
     }
@@ -5098,12 +5112,16 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") state.offsetYaw -= step;
   if (state.cameraLayout === "carousel") {
     if (e.key === "ArrowUp") {
-      state.carouselDragY += carouselDragLiftDelta(-48) * 0.004;
+      state.carouselDragY += carouselDragLiftDelta(-48) * CAROUSEL_DRAG_LIFT;
     }
     if (e.key === "ArrowDown") {
-      state.carouselDragY += carouselDragLiftDelta(48) * 0.004;
+      state.carouselDragY += carouselDragLiftDelta(48) * CAROUSEL_DRAG_LIFT;
     }
-    state.carouselDragY = THREE.MathUtils.clamp(state.carouselDragY, -1.4, 1.4);
+    state.carouselDragY = THREE.MathUtils.clamp(
+      state.carouselDragY,
+      CAROUSEL_DRAG_Y_MIN,
+      CAROUSEL_DRAG_Y_MAX
+    );
   } else {
     if (e.key === "ArrowUp") state.offsetPitch += step * 0.7;
     if (e.key === "ArrowDown") state.offsetPitch -= step * 0.7;
