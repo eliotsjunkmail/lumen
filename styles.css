@@ -248,6 +248,7 @@ button {
 
 .hud-bottom,
 .radar,
+.field-locate,
 .aim,
 .delete-btn,
 .status,
@@ -565,6 +566,43 @@ button {
   border-color: rgba(198, 255, 74, 0.55);
 }
 
+.field-locate {
+  top: calc(72px + var(--safe-top) + 94px);
+  right: 22px;
+  width: 2.45rem;
+  height: 2.45rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(198, 255, 74, 0.3);
+  background: rgba(6, 16, 12, 0.78);
+  color: var(--signal);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  animation: fade-down 0.7s 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.field-locate svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: block;
+}
+
+.field-locate:active {
+  transform: scale(0.94);
+}
+
+.field-locate.is-following {
+  color: #7eb0ff;
+  border-color: rgba(47, 107, 255, 0.55);
+  background: rgba(12, 28, 48, 0.88);
+}
+
+.field-locate:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .radar-ring,
 .radar-ring--mid,
 .radar-you,
@@ -851,7 +889,8 @@ button {
 }
 
 /* —— Immersive watch theater —— */
-.field.is-ranging .radar {
+.field.is-ranging .radar,
+.field.is-ranging .field-locate {
   visibility: hidden;
   pointer-events: none;
 }
@@ -859,6 +898,7 @@ button {
 .field.is-watching .hud-top,
 .field.is-watching .hud-bottom,
 .field.is-watching .radar,
+.field.is-watching .field-locate,
 .field.is-watching .aim,
 .field.is-watching .status,
 .field.is-watching .guide,

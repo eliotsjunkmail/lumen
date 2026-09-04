@@ -126,6 +126,7 @@ const locationPrompt = document.getElementById("location-prompt");
 const locationCopy = document.getElementById("location-copy");
 const locationBtn = document.getElementById("location-btn");
 const radar = document.getElementById("radar");
+const fieldLocate = document.getElementById("field-locate");
 const mapModal = document.getElementById("map-modal");
 const mapBackdrop = document.getElementById("map-backdrop");
 const mapClose = document.getElementById("map-close");
@@ -296,6 +297,7 @@ async function requestLocationAccess({ interactive = false } = {}) {
     updateRadarMapBackground();
     anchorDemoVideosToLaunch();
     updateGeoAnchors();
+    syncLocateButtons();
     setLocationUi(
       "ready",
       "Location on."
@@ -370,6 +372,7 @@ function startGeoWatch() {
       updateRadarMapBackground();
       anchorDemoVideosToLaunch();
       updateGeoAnchors();
+      syncLocateButtons();
     },
     (err) => console.warn(err),
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
@@ -2201,28 +2204,39 @@ function fitMapToPins() {
   });
 }
 
-function syncMapLocateButton() {
-  const btn = document.getElementById("map-locate");
-  if (!btn) return;
-  btn.classList.toggle("is-following", Boolean(state.viewFollowsUser));
-  btn.disabled = !gpsOrigin();
+function syncLocateButtons() {
+  for (const btn of [
+    document.getElementById("map-locate"),
+    fieldLocate,
+  ]) {
+    if (!btn) continue;
+    btn.classList.toggle("is-following", Boolean(state.viewFollowsUser));
+    btn.disabled = !gpsOrigin();
+  }
 }
 
-function recenterMapOnUser() {
+function recenterOnUser() {
   const you = gpsOrigin();
-  if (!you || !state.leafletMap) return;
+  if (!you) {
+    setStatus("Enable location to center here", 3200);
+    return;
+  }
   state.viewFollowsUser = true;
   state.viewGeo = { lat: you.lat, lng: you.lng };
-  const zoom = state.leafletMap.getZoom();
-  withMapProgrammatic(() => {
-    state.leafletMap.setView([you.lat, you.lng], zoom < 11 ? 16 : zoom, {
-      animate: false,
+  if (state.leafletMap) {
+    const zoom = state.leafletMap.getZoom();
+    withMapProgrammatic(() => {
+      state.leafletMap.setView([you.lat, you.lng], zoom < 11 ? 16 : zoom, {
+        animate: false,
+      });
     });
-  });
+    if (state.mapOpen) {
+      syncLeafletMarkers();
+      refreshMapList();
+    }
+  }
   updateGeoAnchors();
-  syncLeafletMarkers();
-  refreshMapList();
-  syncMapLocateButton();
+  syncLocateButtons();
   if (mapSupport && state.mapOpen && !state.selectedClusterId) {
     mapSupport.textContent = MAP_SUPPORT_NEARBY;
   }
@@ -2248,7 +2262,7 @@ function applyMapCenterAsViewOrigin({ force = false } = {}) {
     syncLeafletMarkers();
     refreshMapList();
   }
-  syncMapLocateButton();
+  syncLocateButtons();
 }
 
 let mapOriginTimer = 0;
@@ -2288,13 +2302,13 @@ function addMapLocateControl(L, map) {
       L.DomEvent.disableScrollPropagation(btn);
       L.DomEvent.on(btn, "click", (e) => {
         L.DomEvent.stop(e);
-        recenterMapOnUser();
+        recenterOnUser();
       });
       return btn;
     },
   });
   new Control({ position: "bottomright" }).addTo(map);
-  syncMapLocateButton();
+  syncLocateButtons();
 }
 
 let leafletPromise = null;
@@ -2602,7 +2616,7 @@ async function openMapModal() {
         );
       });
     }
-    syncMapLocateButton();
+    syncLocateButtons();
   } catch (err) {
     console.warn("Map failed to load", err);
     if (mapViewport) {
@@ -3492,6 +3506,10 @@ theaterVideo.addEventListener("loadedmetadata", () => {
 radar?.addEventListener("click", (e) => {
   e.stopPropagation();
   openMapModal();
+});
+fieldLocate?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  recenterOnUser();
 });
 mapClose?.addEventListener("click", closeMapModal);
 mapBackdrop?.addEventListener("click", closeMapModal);
