@@ -22,9 +22,8 @@ const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 6.2;
 const CAROUSEL_MAX = 12;
-const CAROUSEL_GAP_M = 0.96;
+const CAROUSEL_GAP_M = 1.25;
 const CAROUSEL_SCALE = 3;
-const CAROUSEL_RADIUS_MAX = 7.8;
 const CAROUSEL_FLOOR_Y = 0.05;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
@@ -893,8 +892,9 @@ function carouselRingVectors() {
 
 function carouselChordAngle(width, radius) {
   const half = Math.max(0, width) * 0.5;
-  if (radius <= 1e-6) return Math.PI;
-  return 2 * Math.asin(Math.min(0.999, half / radius));
+  if (radius <= half + 1e-4) return Math.PI;
+  // Visual half-width of a facing plane, so neighbors stay off its silhouette.
+  return 2 * Math.atan(half / radius);
 }
 
 /** Pack clip widths onto a full circle around the viewer, centered on heading. */
@@ -902,20 +902,18 @@ function carouselRingLayout(widths, distM = CAROUSEL_DIST_M, gapM = CAROUSEL_GAP
   const n = widths.length;
   if (!n) return { radius: distM, angles: [] };
 
-  let radius = Math.max(0.5, distM);
+  const packed = widths.map((w) => Math.max(0.4, w * 1.12));
+  let radius = Math.max(0.5, distM, Math.max(...packed) * 0.55);
   let itemAng = [];
   let gapAng = 0;
   let needed = 0;
-  for (let i = 0; i < 12; i += 1) {
-    itemAng = widths.map((w) => carouselChordAngle(w, radius));
+  for (let i = 0; i < 16; i += 1) {
+    itemAng = packed.map((w) => carouselChordAngle(w, radius));
     gapAng = gapM / radius;
     needed = itemAng.reduce((s, a) => s + a, 0) + n * gapAng;
     if (needed <= Math.PI * 2 + 1e-6) break;
-    radius = Math.min(CAROUSEL_RADIUS_MAX, radius * (needed / (Math.PI * 2)));
+    radius *= needed / (Math.PI * 2);
   }
-  itemAng = widths.map((w) => carouselChordAngle(w, radius));
-  gapAng = gapM / radius;
-  needed = itemAng.reduce((s, a) => s + a, 0) + n * gapAng;
 
   const extra = Math.max(0, (Math.PI * 2 - needed) / n);
   const angles = [];
@@ -1448,6 +1446,7 @@ function createNode(item, index) {
       color: 0xc6ff4a,
       transparent: true,
       opacity: kind === "image" ? 0 : 0.18,
+      depthWrite: true,
       side: THREE.DoubleSide,
     })
   );
