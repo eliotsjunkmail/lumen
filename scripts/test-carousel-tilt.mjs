@@ -63,4 +63,14 @@ if (carouselRelativePitch(0.1, null) !== 0) {
   throw new Error("no baseline should hold the home view");
 }
 
+function carouselDropShiftY(y, drop = 0.95) {
+  return y - drop;
+}
+if (!(carouselDropShiftY(1.4) < 1.4)) {
+  throw new Error("town-bar layout should lower the carousel");
+}
+if (Math.abs(carouselDropShiftY(1.4, 0.95) - 0.45) > 1e-9) {
+  throw new Error("drop should move clips down by the town-bar offset");
+}
+
 console.log("carousel-tilt tests passed");

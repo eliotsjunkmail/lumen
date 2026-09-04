@@ -44,6 +44,8 @@ const CAROUSEL_SCALE = 3;
 const CAROUSEL_SCALE_SMALL = 1.45;
 const CAROUSEL_FLOOR_Y = 0.05;
 const CAROUSEL_ROW_GAP_M = 0.24;
+/** Lower the ring on screen so it sits under the town bar. */
+const CAROUSEL_DROP_Y = 0.95;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
@@ -1024,6 +1026,7 @@ function layoutCameraCarousel() {
     state.carouselTiltT = 0;
   }
   shiftY += state.carouselDragY;
+  shiftY -= CAROUSEL_DROP_Y;
   for (const col of columns) {
     for (const node of col) node.anchorY += shiftY;
   }

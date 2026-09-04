@@ -469,7 +469,9 @@ button {
 .hud-bottom {
   left: 16px;
   right: 16px;
-  bottom: calc(18px + var(--safe-bottom));
+  top: calc(62px + var(--safe-top));
+  bottom: auto;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -480,14 +482,14 @@ button {
   background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  animation: fade-up 0.7s 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: fade-down 0.7s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .add-fab {
   z-index: 4;
   left: 0;
   right: 0;
-  bottom: calc(92px + var(--safe-bottom));
+  bottom: calc(22px + var(--safe-bottom));
   width: 3.35rem;
   height: 3.35rem;
   margin: 0 auto;
@@ -812,7 +814,7 @@ button {
 }
 
 .aim {
-  top: 50%;
+  top: 61%;
   left: 50%;
   width: 72px;
   height: 72px;
@@ -937,7 +939,7 @@ button {
 
 .status {
   left: 50%;
-  bottom: calc(110px + var(--safe-bottom));
+  bottom: calc(88px + var(--safe-bottom));
   transform: translateX(-50%);
   margin: 0;
   max-width: min(88vw, 24rem);
