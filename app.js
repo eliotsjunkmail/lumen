@@ -1403,7 +1403,15 @@ function waitForNodePoster(node, ms = 10000) {
 }
 
 function setStatus(message, ms = 2800) {
-  statusEl.textContent = message;
+  if (!statusEl) return;
+  const text = String(message || "").trim();
+  if (!text) {
+    statusEl.textContent = "";
+    statusEl.classList.remove("is-on");
+    clearTimeout(statusTimer);
+    return;
+  }
+  statusEl.textContent = text;
   statusEl.classList.add("is-on");
   clearTimeout(statusTimer);
   statusTimer = setTimeout(() => statusEl.classList.remove("is-on"), ms);
@@ -4076,8 +4084,8 @@ async function enterField() {
   bootField(
     cameraOk
       ? motionOk
-        ? "Thumbs-up to react · Add to pin or create"
-        : "Motion blocked — drag to look · Add to pin or create"
+        ? ""
+        : "Motion blocked — drag to look"
       : "Camera blocked — drag to explore demo videos"
   );
 
