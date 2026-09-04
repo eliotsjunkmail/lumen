@@ -22,6 +22,7 @@ const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
 const CAROUSEL_DIST_M = 4.4;
 const CAROUSEL_MAX = 12;
+const CAROUSEL_GAP_M = 0.42;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
@@ -812,12 +813,37 @@ function layoutCameraCarousel() {
 
   const originX = camera ? camera.position.x : 0;
   const originZ = camera ? camera.position.z : 0;
-  const mid = (nearby.length - 1) / 2;
+  const widths = nearby.map((node) => carouselNodeWidth(node));
+  const slots = [];
+  let cursor = 0;
+  nearby.forEach((_, i) => {
+    slots.push(cursor + widths[i] * 0.5);
+    cursor += widths[i] + CAROUSEL_GAP_M;
+  });
+  const mid = (cursor - CAROUSEL_GAP_M) * 0.5;
   nearby.forEach((node, i) => {
-    const t = (i - mid) * CAMERA_SPREAD_M;
+    const t = slots[i] - mid;
     node.anchorX = originX + fx * CAROUSEL_DIST_M + rx * t;
     node.anchorZ = originZ + fz * CAROUSEL_DIST_M + rz * t;
   });
+}
+
+function carouselNodeWidth(node) {
+  const sw = node.screen?.geometry?.parameters?.width || 1.65;
+  const fw =
+    node.kind === "video"
+      ? node.frame?.geometry?.parameters?.width || sw + 0.14
+      : 0;
+  const lw = node.label?.visible !== false
+    ? node.label?.geometry?.parameters?.width || 2.2
+    : 0;
+  return Math.max(sw, fw, lw, 1.5);
+}
+
+function carouselFacingYaw() {
+  const fx = state.carouselFwdX ?? 0;
+  const fz = state.carouselFwdZ ?? -1;
+  return Math.atan2(-fx, -fz);
 }
 
 function nodeTakenMs(node) {
@@ -1622,14 +1648,18 @@ function updateNodes(t, dt) {
         }
       }
       const swayAmp = node.flying ? 0.055 : 0.028;
-      const sway = Math.sin(t * 2.4 + node.phase) * swayAmp;
-      const breathe = 1 + Math.sin(t * 3.1 + node.phase) * (node.flying ? 0.04 : 0.02);
+      const sway = state.cameraLayout === "carousel" ? 0 : Math.sin(t * 2.4 + node.phase) * swayAmp;
+      const breathe =
+        state.cameraLayout === "carousel"
+          ? 1
+          : 1 + Math.sin(t * 3.1 + node.phase) * (node.flying ? 0.04 : 0.02);
       node.screen.rotation.z = sway;
       node.screen.scale.setScalar(breathe);
     } else {
       node.frame.material.opacity = hot ? 0.55 : 0.16;
       node.screen.rotation.z = 0;
-      const viewScale = cameraVideoScale(node);
+      const viewScale =
+        state.cameraLayout === "carousel" ? 1 : cameraVideoScale(node);
       node.screen.scale.set(viewScale, viewScale, 1);
       node.frame.scale.set(viewScale, viewScale, 1);
       node.beacon.material.color.set(hot ? 0xffffff : 0xc6ff4a);
@@ -1643,9 +1673,14 @@ function updateNodes(t, dt) {
 
 function alignNodeToGround(node) {
   if (!camera || !node?.group) return;
-  const dx = camera.position.x - node.group.position.x;
-  const dz = camera.position.z - node.group.position.z;
-  const yaw = dx * dx + dz * dz > 1e-8 ? Math.atan2(dx, dz) : 0;
+  let yaw;
+  if (state.cameraLayout === "carousel") {
+    yaw = carouselFacingYaw();
+  } else {
+    const dx = camera.position.x - node.group.position.x;
+    const dz = camera.position.z - node.group.position.z;
+    yaw = dx * dx + dz * dz > 1e-8 ? Math.atan2(dx, dz) : 0;
+  }
   _groundEuler.set(0, yaw, 0, "YXZ");
   node.group.quaternion.setFromEuler(_groundEuler);
   if (node.kind === "video") {
