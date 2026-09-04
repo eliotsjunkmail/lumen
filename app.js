@@ -2562,14 +2562,9 @@ function renderCityTagBar(el, groups, viewIds) {
     btn.type = "button";
     btn.className = "city-tag";
     if (on) btn.classList.add("is-on");
+    btn.dataset.cityKey = group.key;
     btn.setAttribute("aria-pressed", String(on));
     btn.textContent = group.label;
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (cityTagDidPan) return;
-      toggleCityTag(group.key);
-    });
     el.appendChild(btn);
   }
   el.hidden = !groups.length;
@@ -2623,6 +2618,7 @@ function isolateCityTagGestures(el) {
   let startX = 0;
   let startScroll = 0;
   let activeId = null;
+  let startBtn = null;
 
   el.addEventListener("pointerdown", (e) => {
     e.stopPropagation();
@@ -2630,6 +2626,7 @@ function isolateCityTagGestures(el) {
     activeId = e.pointerId;
     startX = e.clientX;
     startScroll = el.scrollLeft;
+    startBtn = e.target?.closest?.(".city-tag") || null;
     cityTagDidPan = false;
     try {
       el.setPointerCapture(e.pointerId);
@@ -2647,15 +2644,29 @@ function isolateCityTagGestures(el) {
   const endPointer = (e) => {
     e.stopPropagation();
     if (activeId !== e.pointerId) return;
+    const panned = cityTagDidPan;
+    const btn = startBtn;
     activeId = null;
+    startBtn = null;
     try {
       el.releasePointerCapture(e.pointerId);
     } catch {
       /* ignore */
     }
+    if (!panned && btn?.dataset.cityKey) toggleCityTag(btn.dataset.cityKey);
   };
   el.addEventListener("pointerup", endPointer);
-  el.addEventListener("pointercancel", endPointer);
+  el.addEventListener("pointercancel", (e) => {
+    e.stopPropagation();
+    if (activeId !== e.pointerId) return;
+    activeId = null;
+    startBtn = null;
+    try {
+      el.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  });
   el.addEventListener(
     "wheel",
     (e) => {
@@ -2671,6 +2682,7 @@ function isolateCityTagGestures(el) {
     "mousedown",
     "mousemove",
     "mouseup",
+    "click",
     "touchstart",
     "touchmove",
     "touchend",
