@@ -39,12 +39,84 @@ export function nearestCachedPlace(cache, lat, lng, maxM = 450) {
   return best || null;
 }
 
+const US_STATE_ABBREV = {
+  alabama: "AL",
+  alaska: "AK",
+  arizona: "AZ",
+  arkansas: "AR",
+  california: "CA",
+  colorado: "CO",
+  connecticut: "CT",
+  delaware: "DE",
+  florida: "FL",
+  georgia: "GA",
+  hawaii: "HI",
+  idaho: "ID",
+  illinois: "IL",
+  indiana: "IN",
+  iowa: "IA",
+  kansas: "KS",
+  kentucky: "KY",
+  louisiana: "LA",
+  maine: "ME",
+  maryland: "MD",
+  massachusetts: "MA",
+  michigan: "MI",
+  minnesota: "MN",
+  mississippi: "MS",
+  missouri: "MO",
+  montana: "MT",
+  nebraska: "NE",
+  nevada: "NV",
+  "new hampshire": "NH",
+  "new jersey": "NJ",
+  "new mexico": "NM",
+  "new york": "NY",
+  "north carolina": "NC",
+  "north dakota": "ND",
+  ohio: "OH",
+  oklahoma: "OK",
+  oregon: "OR",
+  pennsylvania: "PA",
+  "rhode island": "RI",
+  "south carolina": "SC",
+  "south dakota": "SD",
+  tennessee: "TN",
+  texas: "TX",
+  utah: "UT",
+  vermont: "VT",
+  virginia: "VA",
+  washington: "WA",
+  "west virginia": "WV",
+  wisconsin: "WI",
+  wyoming: "WY",
+  "district of columbia": "DC",
+  "washington, d.c.": "DC",
+  "washington dc": "DC",
+};
+
 export function regionCode(raw) {
   const s = String(raw || "").trim();
   if (!s) return "";
-  const iso = s.split("-").pop();
-  if (iso && iso.length >= 2 && iso.length <= 3) return iso.toUpperCase();
-  return s;
+  if (/^[A-Za-z]{2}$/.test(s)) return s.toUpperCase();
+  const iso = s.includes("-") ? s.split("-").pop() : "";
+  if (iso && /^[A-Za-z]{2}$/.test(iso)) return iso.toUpperCase();
+  return US_STATE_ABBREV[s.toLowerCase()] || s;
+}
+
+export function photonReverseUrl(lat, lng) {
+  return `https://photon.komoot.io/reverse?lon=${encodeURIComponent(lng)}&lat=${encodeURIComponent(lat)}`;
+}
+
+export function townFromPhoton(data) {
+  const p = data?.features?.[0]?.properties;
+  if (!p || typeof p !== "object") return "";
+  const city = formatTownName(
+    p.city || p.town || p.village || p.municipality || p.district || ""
+  );
+  if (!city) return "";
+  const stateCode = regionCode(p.statecode || p.state);
+  return formatTownName(stateCode ? `${city}, ${stateCode}` : city);
 }
 
 export function townFromBigDataCloud(data) {
@@ -83,13 +155,20 @@ async function fetchJson(url, timeoutMs = 6000) {
   }
 }
 
-/** BigDataCloud first, Nominatim if that is empty or times out. */
+/**
+ * Photon first (CORS * from GitHub Pages / Safari), then BigDataCloud,
+ * then Nominatim. Photon and BigDataCloud run in parallel.
+ */
 export async function fetchTownName(lat, lng) {
-  const bdc = await fetchJson(
-    `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
-  );
-  const fromBdc = townFromBigDataCloud(bdc);
-  if (fromBdc) return fromBdc;
+  const [photon, bdc] = await Promise.all([
+    fetchJson(photonReverseUrl(lat, lng)),
+    fetchJson(
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
+    ),
+  ]);
+  const named =
+    townFromPhoton(photon) || townFromBigDataCloud(bdc);
+  if (named) return named;
   const nom = await fetchJson(
     `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
   );

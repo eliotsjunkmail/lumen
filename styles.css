@@ -608,7 +608,7 @@ button {
   background: transparent;
   color: var(--foam);
   font: inherit;
-  font-size: 0.92rem;
+  font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   white-space: nowrap;
@@ -617,6 +617,8 @@ button {
   -webkit-appearance: none;
   cursor: pointer;
   color-scheme: dark;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .town-pick::after {

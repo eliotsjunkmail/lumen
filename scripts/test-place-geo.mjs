@@ -2,9 +2,11 @@ import {
   distanceMeters,
   nearestCachedPlace,
   placeCacheKey,
+  photonReverseUrl,
   regionCode,
   townFromBigDataCloud,
   townFromNominatim,
+  townFromPhoton,
 } from "../place-geo.js";
 
 const westfield = { lat: 40.6568, lng: -74.3465 };
@@ -46,6 +48,7 @@ if (nearestCachedPlace(cache, 41.3, -72.9) !== null) {
 }
 
 if (regionCode("US-NJ") !== "NJ") throw new Error("US-NJ should shorten to NJ");
+if (regionCode("New Jersey") !== "NJ") throw new Error("New Jersey should shorten to NJ");
 if (townFromBigDataCloud({
   city: "Westfield",
   locality: "Westfield",
@@ -58,7 +61,27 @@ if (townFromNominatim({
 }) !== "Westfield, NJ") {
   throw new Error("Nominatim Westfield parse");
 }
+if (townFromPhoton({
+  features: [{
+    properties: {
+      name: "North Euclid Avenue",
+      city: "Westfield",
+      state: "New Jersey",
+      countrycode: "US",
+    },
+  }],
+}) !== "Westfield, NJ") {
+  throw new Error("Photon Westfield parse");
+}
+if (townFromPhoton({
+  features: [{ properties: { name: "North Euclid Avenue", countrycode: "US" } }],
+}) !== "") {
+  throw new Error("Photon must not use a street name as the town");
+}
 if (townFromBigDataCloud(null) !== "") throw new Error("empty geocode");
+if (!photonReverseUrl(40.6568, -74.3465).includes("lon=-74.3465")) {
+  throw new Error("Photon reverse URL should use lon,lat");
+}
 
 const nearbyClip = { lat: westfield.lat + 0.004, lng: westfield.lng };
 if (nearestCachedPlace(cache, nearbyClip.lat, nearbyClip.lng, 1600) !== "Westfield, NJ") {
