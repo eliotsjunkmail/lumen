@@ -23,6 +23,7 @@ import {
   carouselDragLiftDelta,
   carouselRelativePitch,
 } from "./carousel-tilt.js";
+import { playGrowTarget, stepPlayGrow, playGrowScale } from "./play-grow.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
 const CAMERA_RANGE_MAX_FT = 10 * 5280;
@@ -1838,6 +1839,7 @@ function createNode(item, index) {
     baseY: item.position[1],
     phase: index * 1.1,
     previewing: false,
+    playGrow: 0,
     posterTex: null,
     posterFailed: false,
     videoTex: null,
@@ -2139,6 +2141,17 @@ function updateNodes(t, dt) {
     }
 
     const hot = state.focused === node;
+    node.playGrow = stepPlayGrow(
+      node.playGrow,
+      playGrowTarget({
+        focused: hot,
+        kind: node.kind,
+        previewing: node.previewing,
+        paused: node.video ? node.video.paused : true,
+      }),
+      dt
+    );
+    const grow = playGrowScale(node.playGrow);
     if (node.kind === "image") {
       node.frame.visible = false;
       // Flipbook + idle sway so creations feel alive
@@ -2165,7 +2178,7 @@ function updateNodes(t, dt) {
     } else {
       node.frame.material.opacity = hot ? 0.55 : 0.16;
       node.screen.rotation.z = 0;
-      const viewScale = carousel ? carouselScale() : cameraVideoScale(node);
+      const viewScale = (carousel ? carouselScale() : cameraVideoScale(node)) * grow;
       node.screen.scale.set(viewScale, viewScale, 1);
       node.frame.scale.set(viewScale, viewScale, 1);
       node.beacon.material.color.set(hot ? 0xffffff : 0x9ec4c8);
