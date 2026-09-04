@@ -17,6 +17,9 @@ const RADAR_DOT_COUNT = 10;
 const MAP_LIST_COUNT = 20;
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
+const LOOK_FOV_DEFAULT = 60;
+const LOOK_FOV_MIN = 28;
+const LOOK_FOV_MAX = 78;
 
 /** Stable anonymous id so users can delete their own shared pins. */
 function getDeviceId() {
@@ -1163,7 +1166,12 @@ function positionDeleteBtn() {
 
 function buildScene() {
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera = new THREE.PerspectiveCamera(
+    LOOK_FOV_DEFAULT,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    100
+  );
   camera.position.set(0, 1.4, 0);
 
   renderer = new THREE.WebGLRenderer({
@@ -2256,33 +2264,85 @@ function enableOrientation() {
 }
 
 function bindLookControls() {
+  const pointers = new Map();
   let ptrStart = null;
   let ptrMoved = false;
+  let pinching = false;
+  let pinchStartDist = 0;
+  let pinchStartFov = LOOK_FOV_DEFAULT;
 
-  const onDown = (x, y) => {
-    state.dragging = true;
-    state.lastX = x;
-    state.lastY = y;
-    ptrStart = { x, y, t: performance.now() };
-    ptrMoved = false;
+  const pinchDist = () => {
+    const pts = [...pointers.values()];
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
   };
-  const onMove = (x, y) => {
-    if (!state.dragging || state.watching) return;
-    const dx = x - state.lastX;
-    const dy = y - state.lastY;
-    state.lastX = x;
-    state.lastY = y;
+
+  const applyPinchZoom = () => {
+    if (!camera || pointers.size < 2 || pinchStartDist < 8) return;
+    const d = pinchDist();
+    if (d < 8) return;
+    camera.fov = THREE.MathUtils.clamp(
+      pinchStartFov * (pinchStartDist / d),
+      LOOK_FOV_MIN,
+      LOOK_FOV_MAX
+    );
+    camera.updateProjectionMatrix();
+  };
+
+  const onDown = (id, x, y) => {
+    if (state.watching || state.mapOpen || !state.booted) return;
+    pointers.set(id, { x, y });
+    if (pointers.size === 1) {
+      pinching = false;
+      state.dragging = true;
+      state.lastX = x;
+      state.lastY = y;
+      ptrStart = { x, y, t: performance.now() };
+      ptrMoved = false;
+      return;
+    }
+    if (pointers.size === 2) {
+      pinching = true;
+      state.dragging = false;
+      ptrMoved = true;
+      pinchStartDist = pinchDist();
+      pinchStartFov = camera?.fov ?? LOOK_FOV_DEFAULT;
+    }
+  };
+
+  const onMove = (id, x, y) => {
+    const prev = pointers.get(id);
+    if (!prev) return;
+    pointers.set(id, { x, y });
+    if (state.watching) return;
+    if (pointers.size >= 2 && pinching) {
+      applyPinchZoom();
+      return;
+    }
+    if (pointers.size !== 1 || !state.dragging || pinching) return;
     if (ptrStart && Math.hypot(x - ptrStart.x, y - ptrStart.y) > 10) {
       ptrMoved = true;
     }
-    // Manual offset (desktop free-look, or gyro calibration nudge on phone)
-    state.offsetYaw -= dx * 0.005;
-    state.offsetPitch -= dy * 0.004;
-    state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -1.2, 1.2);
+    // Horizontal only — rotate photos / look left-right. Ignore up/down.
+    state.offsetYaw -= (x - prev.x) * 0.005;
   };
-  const onUp = (x, y) => {
+
+  const onUp = (id, x, y) => {
+    if (!pointers.has(id)) return;
+    pointers.delete(id);
+    if (pointers.size >= 2) return;
+    if (pointers.size === 1) {
+      pinching = false;
+      const left = [...pointers.values()][0];
+      state.dragging = true;
+      state.lastX = left.x;
+      state.lastY = left.y;
+      return;
+    }
+    const didPinch = pinching;
+    pinching = false;
     state.dragging = false;
-    if (state.watching || !ptrStart) {
+    if (state.watching || !ptrStart || didPinch) {
       ptrStart = null;
       return;
     }
@@ -2298,15 +2358,53 @@ function bindLookControls() {
   };
 
   canvas.addEventListener("pointerdown", (e) => {
-    canvas.setPointerCapture(e.pointerId);
-    onDown(e.clientX, e.clientY);
+    if (e.pointerType === "touch") return;
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    onDown(e.pointerId, e.clientX, e.clientY);
   });
-  canvas.addEventListener("pointermove", (e) => onMove(e.clientX, e.clientY));
-  canvas.addEventListener("pointerup", (e) => onUp(e.clientX, e.clientY));
-  canvas.addEventListener("pointercancel", () => {
-    state.dragging = false;
-    ptrStart = null;
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch") return;
+    onMove(e.pointerId, e.clientX, e.clientY);
   });
+  const onPointerEnd = (e) => {
+    if (e.pointerType === "touch") return;
+    onUp(e.pointerId, e.clientX, e.clientY);
+  };
+  canvas.addEventListener("pointerup", onPointerEnd);
+  canvas.addEventListener("pointercancel", onPointerEnd);
+
+  canvas.addEventListener(
+    "touchstart",
+    (e) => {
+      if (state.watching || state.mapOpen) return;
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        onDown(`t${t.identifier}`, t.clientX, t.clientY);
+      }
+    },
+    { passive: false }
+  );
+  canvas.addEventListener(
+    "touchmove",
+    (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        onMove(`t${t.identifier}`, t.clientX, t.clientY);
+      }
+    },
+    { passive: false }
+  );
+  const onTouchEnd = (e) => {
+    for (const t of e.changedTouches) {
+      onUp(`t${t.identifier}`, t.clientX, t.clientY);
+    }
+  };
+  canvas.addEventListener("touchend", onTouchEnd);
+  canvas.addEventListener("touchcancel", onTouchEnd);
 }
 
 /** Prefer a direct hit on a pin screen/label when the user taps. */

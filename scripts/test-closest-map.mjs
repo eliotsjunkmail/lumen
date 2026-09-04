@@ -84,4 +84,13 @@ if (clampRange(12) !== 25) throw new Error("min 25");
 if (clampRange(5000) !== 1000) throw new Error("max 1000");
 if (clampRange(87) !== 75) throw new Error("step 25");
 
+function pinchFov(startFov, startDist, nowDist, min = 28, max = 78) {
+  const next = startFov * (startDist / nowDist);
+  return Math.min(max, Math.max(min, next));
+}
+if (pinchFov(60, 100, 200) >= 60) throw new Error("spread fingers should zoom in");
+if (pinchFov(60, 100, 50) <= 60) throw new Error("pinch should zoom out");
+if (pinchFov(60, 100, 10) !== 78) throw new Error("fov max");
+if (pinchFov(60, 100, 400) !== 28) throw new Error("fov min");
+
 console.log("closest-map tests passed");

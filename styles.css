@@ -237,8 +237,12 @@ button {
   filter: saturate(1.08) contrast(1.05);
 }
 
+.field,
 .stage {
   touch-action: none;
+}
+
+.stage {
   z-index: 1;
 }
 
