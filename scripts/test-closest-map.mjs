@@ -31,6 +31,14 @@ const near = closest(nodes, user, 2);
 if (near[0] !== "nyc" || near[1] !== "philly") {
   throw new Error(`closest 2 should be nyc, philly — got ${near}`);
 }
+const many = Array.from({ length: 30 }, (_, i) => ({
+  id: `n${i}`,
+  lat: 40.71 + i * 0.01,
+  lng: -74.0,
+}));
+if (closest(many, user, 10).length !== 10) throw new Error("radar 10");
+if (closest(many, user, 20).length !== 20) throw new Error("map 20");
+if (closest(many, user, 10)[0] !== "n0") throw new Error("closest first");
 
 const at4ft = cameraScale(1.22);
 if (at4ft > 0.6) throw new Error(`4 ft video still too large: ${at4ft}`);
