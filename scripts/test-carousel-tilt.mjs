@@ -2,6 +2,7 @@ import {
   carouselTiltAmount,
   carouselRowShiftY,
   carouselRowSpan,
+  carouselDragPitchDelta,
 } from "../carousel-tilt.js";
 
 if (carouselTiltAmount(0, 0.2) !== 0) {
@@ -33,6 +34,16 @@ if (Math.abs(carouselRowShiftY(camY, bottomY, topY, 1) - (camY - topY)) > 1e-9) 
 const span = carouselRowSpan(1.0, 2.4, 6.2);
 if (!(span > 0.15 && span < 0.3)) {
   throw new Error(`row span should be a small lean, got ${span}`);
+}
+
+if (carouselDragPitchDelta(-0.2) <= 0) {
+  throw new Error("finger-up should pitch so the ring follows upward");
+}
+if (carouselDragPitchDelta(0.2) >= 0) {
+  throw new Error("finger-down should pitch so the ring follows downward");
+}
+if (carouselDragPitchDelta(-0.1) !== 0.1) {
+  throw new Error("drag pitch delta should invert screen dy");
 }
 
 console.log("carousel-tilt tests passed");

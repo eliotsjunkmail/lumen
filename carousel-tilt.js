@@ -17,3 +17,11 @@ export function carouselRowSpan(bottomY, topY, dist) {
   if (!(dist > 0.2) || rise < 0.05) return 0;
   return Math.atan2(rise, dist);
 }
+
+/**
+ * Finger-up is negative screen dy. Return a pitch delta that slides the
+ * ring the same way so the carousel follows the finger.
+ */
+export function carouselDragPitchDelta(screenDy) {
+  return -screenDy;
+}

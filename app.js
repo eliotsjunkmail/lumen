@@ -20,6 +20,7 @@ import {
   carouselTiltAmount,
   carouselRowShiftY,
   carouselRowSpan,
+  carouselDragPitchDelta,
 } from "./carousel-tilt.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
@@ -3596,7 +3597,7 @@ function bindLookControls() {
     if (state.cameraLayout === "carousel") {
       state.offsetYaw += dx;
       if (carouselIsTwoRow()) {
-        state.offsetPitch += dy;
+        state.offsetPitch += carouselDragPitchDelta(dy);
         state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -0.45, 0.12);
       }
     } else {
@@ -4988,8 +4989,8 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") state.offsetYaw += step;
   if (e.key === "ArrowRight") state.offsetYaw -= step;
   if (carouselIsTwoRow()) {
-    if (e.key === "ArrowUp") state.offsetPitch -= step * 0.7;
-    if (e.key === "ArrowDown") state.offsetPitch += step * 0.7;
+    if (e.key === "ArrowUp") state.offsetPitch += carouselDragPitchDelta(-step * 0.7);
+    if (e.key === "ArrowDown") state.offsetPitch += carouselDragPitchDelta(step * 0.7);
     state.offsetPitch = THREE.MathUtils.clamp(state.offsetPitch, -0.45, 0.12);
   } else {
     if (e.key === "ArrowUp") state.offsetPitch += step * 0.7;
