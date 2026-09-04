@@ -13,6 +13,8 @@ const CAMERA_RANGE_MIN_FT = 25;
 const CAMERA_RANGE_MAX_FT = 10 * 5280;
 const CAMERA_RANGE_DEFAULT_FT = 100;
 const CAMERA_RANGE_SLIDER_MAX = 1000;
+const TIME_RANGE_MAX_YR = 20;
+const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 const FEET_PER_MILE = 5280;
 const RADAR_DOT_COUNT = 10;
 const MAP_LIST_COUNT = 20;
@@ -58,6 +60,13 @@ const rangeBtnValue = document.getElementById("range-btn-value");
 const rangeSheet = document.getElementById("range-sheet");
 const rangeSlider = document.getElementById("range-slider");
 const rangeSheetValue = document.getElementById("range-sheet-value");
+const timeBtn = document.getElementById("time-btn");
+const timeBtnValue = document.getElementById("time-btn-value");
+const timeSheet = document.getElementById("time-sheet");
+const timeMinSlider = document.getElementById("time-min");
+const timeMaxSlider = document.getElementById("time-max");
+const timeSheetValue = document.getElementById("time-sheet-value");
+const timeFill = document.getElementById("time-fill");
 const focusLabel = document.getElementById("focus-label");
 const watchBtn = document.getElementById("watch-btn");
 const statusEl = document.getElementById("status");
@@ -154,6 +163,9 @@ const state = {
   theaterAnimId: null,
   cameraRangeFt: CAMERA_RANGE_DEFAULT_FT,
   rangeOpen: false,
+  timeMinYr: 0,
+  timeMaxYr: TIME_RANGE_MAX_YR,
+  timeOpen: false,
 };
 
 let renderer;
@@ -518,20 +530,131 @@ function setCameraRangeFt(value, { persist = true } = {}) {
   updateGeoAnchors();
 }
 
+function syncRangingClass() {
+  if (state.rangeOpen || state.timeOpen) field?.classList.add("is-ranging");
+  else field?.classList.remove("is-ranging");
+}
+
 function openRangeSheet() {
   if (!rangeSheet || !rangeBtn) return;
+  closeTimeSheet({ keepRanging: true });
   state.rangeOpen = true;
   rangeSheet.hidden = false;
   rangeBtn.setAttribute("aria-expanded", "true");
-  field?.classList.add("is-ranging");
+  syncRangingClass();
 }
 
-function closeRangeSheet() {
+function closeRangeSheet({ keepRanging = false } = {}) {
   if (!rangeSheet || !rangeBtn) return;
   state.rangeOpen = false;
   rangeSheet.hidden = true;
   rangeBtn.setAttribute("aria-expanded", "false");
-  field?.classList.remove("is-ranging");
+  if (!keepRanging) syncRangingClass();
+}
+
+function clampTimeYr(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(THREE.MathUtils.clamp(n, 0, TIME_RANGE_MAX_YR));
+}
+
+function loadTimeRange() {
+  let min = 0;
+  let max = TIME_RANGE_MAX_YR;
+  try {
+    const rawMin = localStorage.getItem("lumen-time-min-yr");
+    const rawMax = localStorage.getItem("lumen-time-max-yr");
+    if (rawMin != null && rawMin !== "") min = clampTimeYr(rawMin);
+    if (rawMax != null && rawMax !== "") max = clampTimeYr(rawMax);
+  } catch {
+    /* private browsing */
+  }
+  if (min > max) [min, max] = [max, min];
+  return { min, max };
+}
+
+function formatTimeRange(min, max) {
+  if (min <= 0 && max >= TIME_RANGE_MAX_YR) return "Any year";
+  if (min <= 0 && max <= 0) return "This year";
+  if (min <= 0) return `Within ${max} ${max === 1 ? "year" : "years"}`;
+  if (max >= TIME_RANGE_MAX_YR) return `${min}+ years ago`;
+  if (min === max) return `${min} ${min === 1 ? "year" : "years"} ago`;
+  return `${min}–${max} years ago`;
+}
+
+function nodeYearsAgo(node) {
+  if (!node?.takenAt) return null;
+  const t = new Date(node.takenAt).getTime();
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, (Date.now() - t) / MS_PER_YEAR);
+}
+
+function nodeInTimeRange(node) {
+  const years = nodeYearsAgo(node);
+  if (years == null) return true;
+  const age = Math.floor(years);
+  if (age < state.timeMinYr) return false;
+  if (state.timeMaxYr >= TIME_RANGE_MAX_YR) return true;
+  return age <= state.timeMaxYr;
+}
+
+function syncTimeFill() {
+  if (!timeFill) return;
+  const span = TIME_RANGE_MAX_YR || 1;
+  const left = (state.timeMinYr / span) * 100;
+  const width = ((state.timeMaxYr - state.timeMinYr) / span) * 100;
+  timeFill.style.left = `${left}%`;
+  timeFill.style.width = `${Math.max(width, 0)}%`;
+}
+
+function syncTimeControls() {
+  const label = formatTimeRange(state.timeMinYr, state.timeMaxYr);
+  if (timeBtnValue) timeBtnValue.textContent = label;
+  if (timeSheetValue) timeSheetValue.textContent = label;
+  if (timeMinSlider) timeMinSlider.value = String(state.timeMinYr);
+  if (timeMaxSlider) timeMaxSlider.value = String(state.timeMaxYr);
+  syncTimeFill();
+}
+
+function setTimeRange(minYr, maxYr, { persist = true } = {}) {
+  let min = clampTimeYr(minYr);
+  let max = clampTimeYr(maxYr);
+  if (min > max) [min, max] = [max, min];
+  state.timeMinYr = min;
+  state.timeMaxYr = max;
+  syncTimeControls();
+  if (persist) {
+    try {
+      localStorage.setItem("lumen-time-min-yr", String(min));
+      localStorage.setItem("lumen-time-max-yr", String(max));
+    } catch {
+      /* ignore */
+    }
+  }
+  updateGeoAnchors();
+}
+
+function openTimeSheet() {
+  if (!timeSheet || !timeBtn) return;
+  closeRangeSheet({ keepRanging: true });
+  state.timeOpen = true;
+  timeSheet.hidden = false;
+  timeBtn.setAttribute("aria-expanded", "true");
+  syncRangingClass();
+}
+
+function closeTimeSheet({ keepRanging = false } = {}) {
+  if (!timeSheet || !timeBtn) return;
+  state.timeOpen = false;
+  timeSheet.hidden = true;
+  timeBtn.setAttribute("aria-expanded", "false");
+  if (!keepRanging) syncRangingClass();
+}
+
+function closeFilterSheets() {
+  closeRangeSheet({ keepRanging: true });
+  closeTimeSheet({ keepRanging: true });
+  syncRangingClass();
 }
 
 /** Birds, planes, and other airborne subjects sit in the sky instead of on the ground. */
@@ -620,7 +743,9 @@ function spreadCoincidentPins() {
 
 function closestGeoNodes(limit) {
   const user = state.userGeo || state.originGeo;
-  const geo = state.nodes.filter((n) => n.lat != null && n.lng != null);
+  const geo = state.nodes.filter(
+    (n) => n.lat != null && n.lng != null && nodeInTimeRange(n)
+  );
   if (!geo.length) return [];
   if (!user) return geo.slice(0, limit);
   return geo
@@ -671,7 +796,8 @@ function updateGeoAnchors() {
 
     const dist = distanceMeters(user.lat, user.lng, node.lat, node.lng);
     node.distanceM = dist;
-    const inRange = dist <= geoRangeM();
+    const inTime = nodeInTimeRange(node);
+    const inRange = dist <= geoRangeM() && inTime;
     node.inRange = inRange;
     node.group.visible = inRange;
 
@@ -692,7 +818,11 @@ function updateGeoAnchors() {
       ? taken
         ? `${feet} ft · ${taken}`
         : `${feet} ft · aim from any side`
-      : `Out of range (${feet} ft)`;
+      : !inTime
+        ? taken
+          ? `Outside time frame · ${taken}`
+          : "Outside time frame"
+        : `Out of range (${feet} ft)`;
     if (!inRange && state.focused === node) setFocus(null);
   }
 
@@ -1929,7 +2059,7 @@ function updateMapView() {
 
 async function openMapModal() {
   if (!mapModal || state.watching) return;
-  closeRangeSheet();
+  closeFilterSheets();
   state.mapOpen = true;
   mapModal.hidden = false;
   refreshMapList();
@@ -2098,7 +2228,7 @@ function openTheater(node, opts = {}) {
   closeMapModal();
   closeConfirmModal();
   closeAddModal();
-  closeRangeSheet();
+  closeFilterSheets();
   state.watching = true;
   state.watchingNode = node;
   state.theaterFromMap = fromMap;
@@ -3494,7 +3624,7 @@ function closeAddModal() {
 function openAddModal() {
   if (!addModal) return;
   if (state.watching || state.naming) return;
-  closeRangeSheet();
+  closeFilterSheets();
   closeCreateModal(true);
   addModal.hidden = false;
 }
@@ -3628,6 +3758,8 @@ videoInputCapture?.addEventListener("change", onPickVideos);
 
 state.cameraRangeFt = loadCameraRangeFt();
 syncRangeControls();
+({ min: state.timeMinYr, max: state.timeMaxYr } = loadTimeRange());
+syncTimeControls();
 
 rangeBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -3638,8 +3770,30 @@ rangeSlider?.addEventListener("input", () => {
   setCameraRangeFt(ftFromSliderPos(rangeSlider.value));
 });
 rangeSheet?.addEventListener("click", (e) => e.stopPropagation());
+
+timeBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (state.timeOpen) closeTimeSheet();
+  else openTimeSheet();
+});
+function onTimeSliderInput(which) {
+  const rawMin = clampTimeYr(timeMinSlider?.value);
+  const rawMax = clampTimeYr(timeMaxSlider?.value);
+  let min = rawMin;
+  let max = rawMax;
+  if (which === "min" && min > state.timeMaxYr) min = state.timeMaxYr;
+  if (which === "max" && max < state.timeMinYr) max = state.timeMinYr;
+  if (timeMinSlider && timeMaxSlider) {
+    timeMinSlider.classList.toggle("is-top", which === "min");
+    timeMaxSlider.classList.toggle("is-top", which === "max");
+  }
+  setTimeRange(min, max);
+}
+timeMinSlider?.addEventListener("input", () => onTimeSliderInput("min"));
+timeMaxSlider?.addEventListener("input", () => onTimeSliderInput("max"));
+timeSheet?.addEventListener("click", (e) => e.stopPropagation());
 document.addEventListener("click", () => {
-  if (state.rangeOpen) closeRangeSheet();
+  if (state.rangeOpen || state.timeOpen) closeFilterSheets();
 });
 
 addBtn?.addEventListener("click", (e) => {
@@ -3709,8 +3863,8 @@ createForm?.addEventListener("submit", async (e) => {
 // Desktop keyboard nudge
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    if (state.rangeOpen) {
-      closeRangeSheet();
+    if (state.rangeOpen || state.timeOpen) {
+      closeFilterSheets();
       return;
     }
     if (uploadOverlay && !uploadOverlay.hidden) return;

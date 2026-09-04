@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=64" />
+    <link rel="stylesheet" href="styles.css?v=65" />
   </head>
   <body>
     <div id="app">
@@ -68,15 +68,26 @@
         <header class="hud-top">
           <p class="hud-brand">Lumen</p>
           <div class="range-wrap">
-            <button
-              type="button"
-              id="range-btn"
-              class="range-btn"
-              aria-expanded="false"
-              aria-controls="range-sheet"
-            >
-              Within <span id="range-btn-value">100 ft</span>
-            </button>
+            <div class="range-links">
+              <button
+                type="button"
+                id="range-btn"
+                class="range-btn"
+                aria-expanded="false"
+                aria-controls="range-sheet"
+              >
+                Within <span id="range-btn-value">100 ft</span>
+              </button>
+              <button
+                type="button"
+                id="time-btn"
+                class="range-btn"
+                aria-expanded="false"
+                aria-controls="time-sheet"
+              >
+                <span id="time-btn-value">Any year</span>
+              </button>
+            </div>
             <div id="range-sheet" class="range-sheet" hidden>
               <label class="range-sheet-label" for="range-slider">Show clips up to</label>
               <div class="range-sheet-row">
@@ -92,6 +103,40 @@
                 <span>10 mi</span>
               </div>
               <p class="range-sheet-value" id="range-sheet-value">100 ft</p>
+            </div>
+            <div id="time-sheet" class="range-sheet" hidden>
+              <label class="range-sheet-label" id="time-sheet-label">Show clips filmed</label>
+              <div class="range-sheet-row">
+                <span>Now</span>
+                <div
+                  class="dual-range"
+                  role="group"
+                  aria-labelledby="time-sheet-label"
+                >
+                  <div class="dual-range-track" aria-hidden="true"></div>
+                  <div class="dual-range-fill" id="time-fill" aria-hidden="true"></div>
+                  <input
+                    id="time-min"
+                    type="range"
+                    min="0"
+                    max="20"
+                    step="1"
+                    value="0"
+                    aria-label="Newest year ago"
+                  />
+                  <input
+                    id="time-max"
+                    type="range"
+                    min="0"
+                    max="20"
+                    step="1"
+                    value="20"
+                    aria-label="Oldest year ago"
+                  />
+                </div>
+                <span>20 yr</span>
+              </div>
+              <p class="range-sheet-value" id="time-sheet-value">Any year</p>
             </div>
           </div>
         </header>
@@ -352,6 +397,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=64"></script>
+    <script type="module" src="app.js?v=65"></script>
   </body>
 </html>
