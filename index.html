@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=71" />
+    <link rel="stylesheet" href="styles.css?v=72" />
   </head>
   <body>
     <div id="app">
@@ -65,138 +65,21 @@
 
         <header class="hud-top">
           <p class="hud-brand">Lumen</p>
-          <div class="range-wrap">
-            <div class="range-links">
-              <button
-                type="button"
-                id="range-btn"
-                class="range-btn"
-                aria-expanded="false"
-                aria-controls="range-sheet"
-              >
-                Within <span id="range-btn-value">100 ft</span>
-              </button>
-              <button
-                type="button"
-                id="time-btn"
-                class="range-btn"
-                aria-expanded="false"
-                aria-controls="time-sheet"
-              >
-                <span id="time-btn-value">Any year</span>
-              </button>
-              <button
-                type="button"
-                id="layout-btn"
-                class="range-btn"
-                aria-expanded="false"
-                aria-controls="layout-sheet"
-              >
-                <span id="layout-btn-value">Carousel</span>
-              </button>
-            </div>
-            <div id="range-sheet" class="range-sheet" hidden>
-              <div class="range-sheet-head">
-                <label class="range-sheet-label" for="range-slider">Show clips up to</label>
-                <button
-                  type="button"
-                  id="range-close"
-                  class="range-sheet-close"
-                  aria-label="Close"
-                >
-                  ×
-                </button>
-              </div>
-              <div class="range-sheet-row">
-                <span>25 ft</span>
-                <input
-                  id="range-slider"
-                  type="range"
-                  min="0"
-                  max="1000"
-                  step="1"
-                  value="200"
-                />
-                <span>10 mi</span>
-              </div>
-              <p class="range-sheet-value" id="range-sheet-value">100 ft</p>
-            </div>
-            <div id="time-sheet" class="range-sheet" hidden>
-              <div class="range-sheet-head">
-                <label class="range-sheet-label" id="time-sheet-label">Show clips filmed</label>
-                <button
-                  type="button"
-                  id="time-close"
-                  class="range-sheet-close"
-                  aria-label="Close"
-                >
-                  ×
-                </button>
-              </div>
-              <div class="range-sheet-row">
-                <span>Now</span>
-                <div
-                  class="dual-range"
-                  role="group"
-                  aria-labelledby="time-sheet-label"
-                >
-                  <div class="dual-range-track" aria-hidden="true"></div>
-                  <div class="dual-range-fill" id="time-fill" aria-hidden="true"></div>
-                  <input
-                    id="time-min"
-                    type="range"
-                    min="0"
-                    max="20"
-                    step="1"
-                    value="0"
-                    aria-label="Newest year ago"
-                  />
-                  <input
-                    id="time-max"
-                    type="range"
-                    min="0"
-                    max="20"
-                    step="1"
-                    value="20"
-                    aria-label="Oldest year ago"
-                  />
-                </div>
-                <span>20 yr</span>
-              </div>
-              <p class="range-sheet-value" id="time-sheet-value">Any year</p>
-            </div>
-            <div id="layout-sheet" class="range-sheet" hidden>
-              <div class="range-sheet-head">
-                <p class="range-sheet-label" id="layout-sheet-label">On camera</p>
-                <button
-                  type="button"
-                  id="layout-close"
-                  class="range-sheet-close"
-                  aria-label="Close"
-                >
-                  ×
-                </button>
-              </div>
-              <div class="layout-choices" role="group" aria-labelledby="layout-sheet-label">
-                <button
-                  type="button"
-                  id="layout-place"
-                  class="layout-choice"
-                  aria-pressed="false"
-                >
-                  Actual locations
-                </button>
-                <button
-                  type="button"
-                  id="layout-carousel"
-                  class="layout-choice is-on"
-                  aria-pressed="true"
-                >
-                  Carousel
-                </button>
-              </div>
-            </div>
-          </div>
+          <button
+            type="button"
+            id="settings-btn"
+            class="settings-btn"
+            aria-label="Settings"
+            aria-expanded="false"
+            aria-controls="settings-modal"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96c-.5-.4-1.04-.71-1.63-.94l-.36-2.54A.5.5 0 0 0 13.89 2h-3.78a.5.5 0 0 0-.49.42l-.36 2.54c-.59.23-1.13.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.72 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.42.34.64.22l2.39-.96c.5.4 1.04.71 1.63.94l.36 2.54c.05.24.26.42.49.42h3.78c.24 0 .44-.18.49-.42l.36-2.54c.59-.23 1.13-.54 1.63-.94l2.39.96c.22.12.5.02.64-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"
+              />
+            </svg>
+          </button>
         </header>
 
         <button
@@ -359,6 +242,100 @@
         </div>
       </div>
 
+      <div id="settings-modal" class="name-modal" hidden>
+        <div
+          class="name-panel settings-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="settings-title"
+        >
+          <button
+            type="button"
+            id="settings-close"
+            class="sheet-close"
+            aria-label="Close"
+          >
+            ×
+          </button>
+          <p class="name-brand">Lumen</p>
+          <h2 class="name-title" id="settings-title">Settings</h2>
+
+          <section class="settings-block">
+            <label class="range-sheet-label" for="range-slider">Distance</label>
+            <div class="range-sheet-row">
+              <span>25 ft</span>
+              <input
+                id="range-slider"
+                type="range"
+                min="0"
+                max="1000"
+                step="1"
+                value="200"
+              />
+              <span>10 mi</span>
+            </div>
+            <p class="range-sheet-value" id="range-sheet-value">100 ft</p>
+          </section>
+
+          <section class="settings-block">
+            <p class="range-sheet-label" id="time-sheet-label">Years ago</p>
+            <div class="range-sheet-row">
+              <span>Now</span>
+              <div
+                class="dual-range"
+                role="group"
+                aria-labelledby="time-sheet-label"
+              >
+                <div class="dual-range-track" aria-hidden="true"></div>
+                <div class="dual-range-fill" id="time-fill" aria-hidden="true"></div>
+                <input
+                  id="time-min"
+                  type="range"
+                  min="0"
+                  max="20"
+                  step="1"
+                  value="0"
+                  aria-label="Newest year ago"
+                />
+                <input
+                  id="time-max"
+                  type="range"
+                  min="0"
+                  max="20"
+                  step="1"
+                  value="20"
+                  aria-label="Oldest year ago"
+                />
+              </div>
+              <span>20 yr</span>
+            </div>
+            <p class="range-sheet-value" id="time-sheet-value">Any year</p>
+          </section>
+
+          <section class="settings-block">
+            <p class="range-sheet-label" id="layout-sheet-label">On camera</p>
+            <div class="layout-choices" role="group" aria-labelledby="layout-sheet-label">
+              <button
+                type="button"
+                id="layout-place"
+                class="layout-choice"
+                aria-pressed="false"
+              >
+                Actual locations
+              </button>
+              <button
+                type="button"
+                id="layout-carousel"
+                class="layout-choice is-on"
+                aria-pressed="true"
+              >
+                Carousel
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+
       <div id="add-modal" class="name-modal" hidden>
         <div class="name-panel add-panel" role="dialog" aria-modal="true" aria-label="Add">
           <button
@@ -455,6 +432,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=71"></script>
+    <script type="module" src="app.js?v=72"></script>
   </body>
 </html>

@@ -57,23 +57,17 @@ const field = document.getElementById("field");
 const enterBtn = document.getElementById("enter-btn");
 const camEl = document.getElementById("cam");
 const canvas = document.getElementById("stage");
-const rangeBtn = document.getElementById("range-btn");
-const rangeBtnValue = document.getElementById("range-btn-value");
-const rangeSheet = document.getElementById("range-sheet");
 const rangeSlider = document.getElementById("range-slider");
 const rangeSheetValue = document.getElementById("range-sheet-value");
-const timeBtn = document.getElementById("time-btn");
-const timeBtnValue = document.getElementById("time-btn-value");
-const timeSheet = document.getElementById("time-sheet");
 const timeMinSlider = document.getElementById("time-min");
 const timeMaxSlider = document.getElementById("time-max");
 const timeSheetValue = document.getElementById("time-sheet-value");
 const timeFill = document.getElementById("time-fill");
-const layoutBtn = document.getElementById("layout-btn");
-const layoutBtnValue = document.getElementById("layout-btn-value");
-const layoutSheet = document.getElementById("layout-sheet");
 const layoutPlaceBtn = document.getElementById("layout-place");
 const layoutCarouselBtn = document.getElementById("layout-carousel");
+const settingsBtn = document.getElementById("settings-btn");
+const settingsModal = document.getElementById("settings-modal");
+const settingsClose = document.getElementById("settings-close");
 const focusLabel = document.getElementById("focus-label");
 const watchBtn = document.getElementById("watch-btn");
 const statusEl = document.getElementById("status");
@@ -169,12 +163,10 @@ const state = {
   northAligned: false,
   theaterAnimId: null,
   cameraRangeFt: CAMERA_RANGE_DEFAULT_FT,
-  rangeOpen: false,
   timeMinYr: 0,
   timeMaxYr: TIME_RANGE_MAX_YR,
-  timeOpen: false,
   cameraLayout: "carousel",
-  layoutOpen: false,
+  settingsOpen: false,
   carouselFwdX: null,
   carouselFwdZ: null,
 };
@@ -523,7 +515,6 @@ function formatRangeFt(ft) {
 function syncRangeControls() {
   const ft = state.cameraRangeFt;
   const label = formatRangeFt(ft);
-  if (rangeBtnValue) rangeBtnValue.textContent = label;
   if (rangeSheetValue) rangeSheetValue.textContent = label;
   if (rangeSlider) rangeSlider.value = String(sliderPosFromFt(ft));
 }
@@ -541,28 +532,24 @@ function setCameraRangeFt(value, { persist = true } = {}) {
   updateGeoAnchors();
 }
 
-function syncRangingClass() {
-  if (state.rangeOpen || state.timeOpen || state.layoutOpen) {
-    field?.classList.add("is-ranging");
-  } else field?.classList.remove("is-ranging");
+function openSettingsModal() {
+  if (!settingsModal) return;
+  if (state.watching || state.naming) return;
+  closeAddModal();
+  closeCreateModal(true);
+  state.settingsOpen = true;
+  settingsModal.hidden = false;
+  settingsBtn?.setAttribute("aria-expanded", "true");
 }
 
-function openRangeSheet() {
-  if (!rangeSheet || !rangeBtn) return;
-  closeTimeSheet({ keepRanging: true });
-  closeLayoutSheet({ keepRanging: true });
-  state.rangeOpen = true;
-  rangeSheet.hidden = false;
-  rangeBtn.setAttribute("aria-expanded", "true");
-  syncRangingClass();
+function closeSettingsModal() {
+  state.settingsOpen = false;
+  if (settingsModal) settingsModal.hidden = true;
+  settingsBtn?.setAttribute("aria-expanded", "false");
 }
 
-function closeRangeSheet({ keepRanging = false } = {}) {
-  if (!rangeSheet || !rangeBtn) return;
-  state.rangeOpen = false;
-  rangeSheet.hidden = true;
-  rangeBtn.setAttribute("aria-expanded", "false");
-  if (!keepRanging) syncRangingClass();
+function closeFilterSheets() {
+  closeSettingsModal();
 }
 
 function clampTimeYr(value) {
@@ -622,7 +609,6 @@ function syncTimeFill() {
 
 function syncTimeControls() {
   const label = formatTimeRange(state.timeMinYr, state.timeMaxYr);
-  if (timeBtnValue) timeBtnValue.textContent = label;
   if (timeSheetValue) timeSheetValue.textContent = label;
   if (timeMinSlider) timeMinSlider.value = String(state.timeMinYr);
   if (timeMaxSlider) timeMaxSlider.value = String(state.timeMaxYr);
@@ -647,31 +633,6 @@ function setTimeRange(minYr, maxYr, { persist = true } = {}) {
   updateGeoAnchors();
 }
 
-function openTimeSheet() {
-  if (!timeSheet || !timeBtn) return;
-  closeRangeSheet({ keepRanging: true });
-  closeLayoutSheet({ keepRanging: true });
-  state.timeOpen = true;
-  timeSheet.hidden = false;
-  timeBtn.setAttribute("aria-expanded", "true");
-  syncRangingClass();
-}
-
-function closeTimeSheet({ keepRanging = false } = {}) {
-  if (!timeSheet || !timeBtn) return;
-  state.timeOpen = false;
-  timeSheet.hidden = true;
-  timeBtn.setAttribute("aria-expanded", "false");
-  if (!keepRanging) syncRangingClass();
-}
-
-function closeFilterSheets() {
-  closeRangeSheet({ keepRanging: true });
-  closeTimeSheet({ keepRanging: true });
-  closeLayoutSheet({ keepRanging: true });
-  syncRangingClass();
-}
-
 function loadCameraLayout() {
   try {
     const raw = localStorage.getItem("lumen-camera-layout");
@@ -684,7 +645,6 @@ function loadCameraLayout() {
 
 function syncLayoutControls() {
   const carousel = state.cameraLayout === "carousel";
-  if (layoutBtnValue) layoutBtnValue.textContent = carousel ? "Carousel" : "In place";
   layoutPlaceBtn?.classList.toggle("is-on", !carousel);
   layoutCarouselBtn?.classList.toggle("is-on", carousel);
   layoutPlaceBtn?.setAttribute("aria-pressed", String(!carousel));
@@ -717,24 +677,6 @@ function setCameraLayout(mode, { persist = true } = {}) {
   }
   updateGeoAnchors();
   for (const node of state.nodes) refreshNodeChrome(node);
-}
-
-function openLayoutSheet() {
-  if (!layoutSheet || !layoutBtn) return;
-  closeRangeSheet({ keepRanging: true });
-  closeTimeSheet({ keepRanging: true });
-  state.layoutOpen = true;
-  layoutSheet.hidden = false;
-  layoutBtn.setAttribute("aria-expanded", "true");
-  syncRangingClass();
-}
-
-function closeLayoutSheet({ keepRanging = false } = {}) {
-  if (!layoutSheet || !layoutBtn) return;
-  state.layoutOpen = false;
-  layoutSheet.hidden = true;
-  layoutBtn.setAttribute("aria-expanded", "false");
-  if (!keepRanging) syncRangingClass();
 }
 
 /** Birds, planes, and other airborne subjects sit in the sky instead of on the ground. */
@@ -3951,24 +3893,17 @@ syncTimeControls();
 state.cameraLayout = loadCameraLayout();
 syncLayoutControls();
 
-rangeBtn?.addEventListener("click", (e) => {
+settingsBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
-  if (state.rangeOpen) closeRangeSheet();
-  else openRangeSheet();
+  if (state.settingsOpen) closeSettingsModal();
+  else openSettingsModal();
+});
+settingsClose?.addEventListener("click", closeSettingsModal);
+settingsModal?.addEventListener("click", (e) => {
+  if (e.target === settingsModal) closeSettingsModal();
 });
 rangeSlider?.addEventListener("input", () => {
   setCameraRangeFt(ftFromSliderPos(rangeSlider.value));
-});
-rangeSheet?.addEventListener("click", (e) => e.stopPropagation());
-document.getElementById("range-close")?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  closeRangeSheet();
-});
-
-timeBtn?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  if (state.timeOpen) closeTimeSheet();
-  else openTimeSheet();
 });
 function onTimeSliderInput(which) {
   const rawMin = clampTimeYr(timeMinSlider?.value);
@@ -3985,35 +3920,8 @@ function onTimeSliderInput(which) {
 }
 timeMinSlider?.addEventListener("input", () => onTimeSliderInput("min"));
 timeMaxSlider?.addEventListener("input", () => onTimeSliderInput("max"));
-timeSheet?.addEventListener("click", (e) => e.stopPropagation());
-document.getElementById("time-close")?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  closeTimeSheet();
-});
-
-layoutBtn?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  if (state.layoutOpen) closeLayoutSheet();
-  else openLayoutSheet();
-});
-layoutPlaceBtn?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  setCameraLayout("place");
-  closeLayoutSheet();
-});
-layoutCarouselBtn?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  setCameraLayout("carousel");
-  closeLayoutSheet();
-});
-layoutSheet?.addEventListener("click", (e) => e.stopPropagation());
-document.getElementById("layout-close")?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  closeLayoutSheet();
-});
-document.addEventListener("click", () => {
-  if (state.rangeOpen || state.timeOpen || state.layoutOpen) closeFilterSheets();
-});
+layoutPlaceBtn?.addEventListener("click", () => setCameraLayout("place"));
+layoutCarouselBtn?.addEventListener("click", () => setCameraLayout("carousel"));
 
 addBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -4082,8 +3990,8 @@ createForm?.addEventListener("submit", async (e) => {
 // Desktop keyboard nudge
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    if (state.rangeOpen || state.timeOpen || state.layoutOpen) {
-      closeFilterSheets();
+    if (state.settingsOpen) {
+      closeSettingsModal();
       return;
     }
     if (uploadOverlay && !uploadOverlay.hidden) return;
