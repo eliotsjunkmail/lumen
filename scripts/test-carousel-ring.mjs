@@ -187,9 +187,6 @@ function clipsOnHeading(widths, fx, fz) {
 }
 
 const lookingRight = clipsOnHeading([1.65], 1, 0);
-if (Math.abs(lookingRight[0].x - lookingRight[0].radius) > 0.8 && Math.abs(lookingRight[0].x) < 4) {
-  // single clip should sit on +X when heading is +X
-}
 if (Math.abs(lookingRight[0].x - 6.2) > 0.8) {
   throw new Error(
     `town carousel should sit on the new heading, got x=${lookingRight[0].x.toFixed(2)}`
