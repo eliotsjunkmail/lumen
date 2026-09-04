@@ -337,13 +337,42 @@ button {
   display: none !important;
 }
 
+.range-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+}
+
 .range-sheet-label {
   display: block;
-  margin-bottom: 0.45rem;
+  margin: 0;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.02em;
   color: rgba(238, 247, 240, 0.62);
+}
+
+.range-sheet-close {
+  flex: 0 0 auto;
+  width: 1.85rem;
+  height: 1.85rem;
+  margin: -0.15rem -0.2rem -0.15rem 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--foam);
+  font-size: 1.35rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+.range-sheet-close:active {
+  transform: scale(0.92);
+  color: var(--signal);
 }
 
 .range-sheet-row {

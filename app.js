@@ -3770,6 +3770,10 @@ rangeSlider?.addEventListener("input", () => {
   setCameraRangeFt(ftFromSliderPos(rangeSlider.value));
 });
 rangeSheet?.addEventListener("click", (e) => e.stopPropagation());
+document.getElementById("range-close")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeRangeSheet();
+});
 
 timeBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -3792,6 +3796,10 @@ function onTimeSliderInput(which) {
 timeMinSlider?.addEventListener("input", () => onTimeSliderInput("min"));
 timeMaxSlider?.addEventListener("input", () => onTimeSliderInput("max"));
 timeSheet?.addEventListener("click", (e) => e.stopPropagation());
+document.getElementById("time-close")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeTimeSheet();
+});
 document.addEventListener("click", () => {
   if (state.rangeOpen || state.timeOpen) closeFilterSheets();
 });

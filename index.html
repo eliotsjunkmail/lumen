@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=68" />
+    <link rel="stylesheet" href="styles.css?v=69" />
   </head>
   <body>
     <div id="app">
@@ -87,7 +87,17 @@
               </button>
             </div>
             <div id="range-sheet" class="range-sheet" hidden>
-              <label class="range-sheet-label" for="range-slider">Show clips up to</label>
+              <div class="range-sheet-head">
+                <label class="range-sheet-label" for="range-slider">Show clips up to</label>
+                <button
+                  type="button"
+                  id="range-close"
+                  class="range-sheet-close"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
               <div class="range-sheet-row">
                 <span>25 ft</span>
                 <input
@@ -103,7 +113,17 @@
               <p class="range-sheet-value" id="range-sheet-value">100 ft</p>
             </div>
             <div id="time-sheet" class="range-sheet" hidden>
-              <label class="range-sheet-label" id="time-sheet-label">Show clips filmed</label>
+              <div class="range-sheet-head">
+                <label class="range-sheet-label" id="time-sheet-label">Show clips filmed</label>
+                <button
+                  type="button"
+                  id="time-close"
+                  class="range-sheet-close"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
               <div class="range-sheet-row">
                 <span>Now</span>
                 <div
@@ -395,6 +415,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=68"></script>
+    <script type="module" src="app.js?v=69"></script>
   </body>
 </html>
