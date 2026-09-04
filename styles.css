@@ -181,13 +181,18 @@ button {
 }
 
 .cta-lens {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: 62%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: auto;
+  width: fit-content;
   min-width: 11.5rem;
   min-height: 3.2rem;
-  margin: 0;
+  margin: 0 auto;
   padding: 0 1.8rem;
   border: 0;
   border-radius: 999px;
