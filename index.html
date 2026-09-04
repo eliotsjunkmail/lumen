@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=96" />
+    <link rel="stylesheet" href="styles.css?v=97" />
   </head>
   <body>
     <div id="app">
@@ -307,15 +307,11 @@
 
           <section class="settings-block">
             <p class="range-sheet-label" id="layout-sheet-label">On camera</p>
-            <div class="layout-choices" role="group" aria-labelledby="layout-sheet-label">
-              <button
-                type="button"
-                id="layout-place"
-                class="layout-choice"
-                aria-pressed="false"
-              >
-                Actual locations
-              </button>
+            <div
+              class="layout-choices is-pair"
+              role="group"
+              aria-labelledby="layout-sheet-label"
+            >
               <button
                 type="button"
                 id="layout-carousel"
@@ -323,6 +319,14 @@
                 aria-pressed="true"
               >
                 Carousel
+              </button>
+              <button
+                type="button"
+                id="layout-place"
+                class="layout-choice"
+                aria-pressed="false"
+              >
+                Actual locations
               </button>
             </div>
           </section>
@@ -336,19 +340,19 @@
             >
               <button
                 type="button"
+                id="video-size-small"
+                class="layout-choice"
+                aria-pressed="false"
+              >
+                Small
+              </button>
+              <button
+                type="button"
                 id="video-size-large"
                 class="layout-choice is-on"
                 aria-pressed="true"
               >
                 Large
-              </button>
-              <button
-                type="button"
-                id="video-size-small"
-                class="layout-choice"
-                aria-pressed="false"
-              >
-                Small · 2 rows
               </button>
             </div>
           </section>
@@ -458,6 +462,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=96"></script>
+    <script type="module" src="app.js?v=97"></script>
   </body>
 </html>
