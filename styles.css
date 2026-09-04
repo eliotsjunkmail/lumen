@@ -375,6 +375,34 @@ button {
   color: var(--signal);
 }
 
+.layout-choices {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.layout-choice {
+  min-height: 2.35rem;
+  width: 100%;
+  padding: 0 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(6, 16, 12, 0.45);
+  color: var(--foam);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.layout-choice:active {
+  transform: scale(0.97);
+}
+
+.layout-choice.is-on {
+  border-color: rgba(198, 255, 74, 0.45);
+  background: var(--signal);
+  color: var(--ink);
+}
+
 .range-sheet-row {
   display: grid;
   grid-template-columns: 2.4rem 1fr 2.6rem;
@@ -553,7 +581,7 @@ button {
 }
 
 .radar {
-  top: calc(124px + var(--safe-top));
+  top: calc(154px + var(--safe-top));
   right: 16px;
   width: 84px;
   height: 84px;

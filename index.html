@@ -19,7 +19,7 @@
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Syne:wght@700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=69" />
+    <link rel="stylesheet" href="styles.css?v=70" />
   </head>
   <body>
     <div id="app">
@@ -84,6 +84,15 @@
                 aria-controls="time-sheet"
               >
                 <span id="time-btn-value">Any year</span>
+              </button>
+              <button
+                type="button"
+                id="layout-btn"
+                class="range-btn"
+                aria-expanded="false"
+                aria-controls="layout-sheet"
+              >
+                <span id="layout-btn-value">In place</span>
               </button>
             </div>
             <div id="range-sheet" class="range-sheet" hidden>
@@ -155,6 +164,37 @@
                 <span>20 yr</span>
               </div>
               <p class="range-sheet-value" id="time-sheet-value">Any year</p>
+            </div>
+            <div id="layout-sheet" class="range-sheet" hidden>
+              <div class="range-sheet-head">
+                <p class="range-sheet-label" id="layout-sheet-label">On camera</p>
+                <button
+                  type="button"
+                  id="layout-close"
+                  class="range-sheet-close"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+              <div class="layout-choices" role="group" aria-labelledby="layout-sheet-label">
+                <button
+                  type="button"
+                  id="layout-place"
+                  class="layout-choice is-on"
+                  aria-pressed="true"
+                >
+                  Actual locations
+                </button>
+                <button
+                  type="button"
+                  id="layout-carousel"
+                  class="layout-choice"
+                  aria-pressed="false"
+                >
+                  Carousel
+                </button>
+              </div>
             </div>
           </div>
         </header>
@@ -415,6 +455,6 @@
       }
     </script>
     <script src="https://js.puter.com/v2/"></script>
-    <script type="module" src="app.js?v=69"></script>
+    <script type="module" src="app.js?v=70"></script>
   </body>
 </html>

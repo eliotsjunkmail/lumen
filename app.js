@@ -20,6 +20,8 @@ const RADAR_DOT_COUNT = 10;
 const MAP_LIST_COUNT = 20;
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
+const CAROUSEL_DIST_M = 4.4;
+const CAROUSEL_MAX = 12;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
@@ -67,6 +69,11 @@ const timeMinSlider = document.getElementById("time-min");
 const timeMaxSlider = document.getElementById("time-max");
 const timeSheetValue = document.getElementById("time-sheet-value");
 const timeFill = document.getElementById("time-fill");
+const layoutBtn = document.getElementById("layout-btn");
+const layoutBtnValue = document.getElementById("layout-btn-value");
+const layoutSheet = document.getElementById("layout-sheet");
+const layoutPlaceBtn = document.getElementById("layout-place");
+const layoutCarouselBtn = document.getElementById("layout-carousel");
 const focusLabel = document.getElementById("focus-label");
 const watchBtn = document.getElementById("watch-btn");
 const statusEl = document.getElementById("status");
@@ -166,6 +173,10 @@ const state = {
   timeMinYr: 0,
   timeMaxYr: TIME_RANGE_MAX_YR,
   timeOpen: false,
+  cameraLayout: "place",
+  layoutOpen: false,
+  carouselFwdX: null,
+  carouselFwdZ: null,
 };
 
 let renderer;
@@ -531,13 +542,15 @@ function setCameraRangeFt(value, { persist = true } = {}) {
 }
 
 function syncRangingClass() {
-  if (state.rangeOpen || state.timeOpen) field?.classList.add("is-ranging");
-  else field?.classList.remove("is-ranging");
+  if (state.rangeOpen || state.timeOpen || state.layoutOpen) {
+    field?.classList.add("is-ranging");
+  } else field?.classList.remove("is-ranging");
 }
 
 function openRangeSheet() {
   if (!rangeSheet || !rangeBtn) return;
   closeTimeSheet({ keepRanging: true });
+  closeLayoutSheet({ keepRanging: true });
   state.rangeOpen = true;
   rangeSheet.hidden = false;
   rangeBtn.setAttribute("aria-expanded", "true");
@@ -637,6 +650,7 @@ function setTimeRange(minYr, maxYr, { persist = true } = {}) {
 function openTimeSheet() {
   if (!timeSheet || !timeBtn) return;
   closeRangeSheet({ keepRanging: true });
+  closeLayoutSheet({ keepRanging: true });
   state.timeOpen = true;
   timeSheet.hidden = false;
   timeBtn.setAttribute("aria-expanded", "true");
@@ -654,7 +668,72 @@ function closeTimeSheet({ keepRanging = false } = {}) {
 function closeFilterSheets() {
   closeRangeSheet({ keepRanging: true });
   closeTimeSheet({ keepRanging: true });
+  closeLayoutSheet({ keepRanging: true });
   syncRangingClass();
+}
+
+function loadCameraLayout() {
+  try {
+    const raw = localStorage.getItem("lumen-camera-layout");
+    if (raw === "carousel") return "carousel";
+  } catch {
+    /* private browsing */
+  }
+  return "place";
+}
+
+function syncLayoutControls() {
+  const carousel = state.cameraLayout === "carousel";
+  if (layoutBtnValue) layoutBtnValue.textContent = carousel ? "Carousel" : "In place";
+  layoutPlaceBtn?.classList.toggle("is-on", !carousel);
+  layoutCarouselBtn?.classList.toggle("is-on", carousel);
+  layoutPlaceBtn?.setAttribute("aria-pressed", String(!carousel));
+  layoutCarouselBtn?.setAttribute("aria-pressed", String(carousel));
+}
+
+function captureCarouselHeading() {
+  const f = getLookForwardFlat();
+  state.carouselFwdX = f.x;
+  state.carouselFwdZ = f.z;
+}
+
+function setCameraLayout(mode, { persist = true } = {}) {
+  const next = mode === "carousel" ? "carousel" : "place";
+  const changed = state.cameraLayout !== next;
+  state.cameraLayout = next;
+  if (next === "place") {
+    state.carouselFwdX = null;
+    state.carouselFwdZ = null;
+  } else if (changed || state.carouselFwdX == null) {
+    captureCarouselHeading();
+  }
+  syncLayoutControls();
+  if (persist) {
+    try {
+      localStorage.setItem("lumen-camera-layout", next);
+    } catch {
+      /* ignore */
+    }
+  }
+  updateGeoAnchors();
+}
+
+function openLayoutSheet() {
+  if (!layoutSheet || !layoutBtn) return;
+  closeRangeSheet({ keepRanging: true });
+  closeTimeSheet({ keepRanging: true });
+  state.layoutOpen = true;
+  layoutSheet.hidden = false;
+  layoutBtn.setAttribute("aria-expanded", "true");
+  syncRangingClass();
+}
+
+function closeLayoutSheet({ keepRanging = false } = {}) {
+  if (!layoutSheet || !layoutBtn) return;
+  state.layoutOpen = false;
+  layoutSheet.hidden = true;
+  layoutBtn.setAttribute("aria-expanded", "false");
+  if (!keepRanging) syncRangingClass();
 }
 
 /** Birds, planes, and other airborne subjects sit in the sky instead of on the ground. */
@@ -683,6 +762,11 @@ function syncCreationStand(node) {
 
 /** Fan clips that share a GPS point into a left-to-right row in camera view. */
 function spreadCoincidentPins() {
+  if (state.cameraLayout === "carousel") {
+    layoutCameraCarousel();
+    return;
+  }
+
   for (const node of state.nodes) {
     if (node.geoX == null) node.geoX = node.anchorX;
     if (node.geoZ == null) node.geoZ = node.anchorZ;
@@ -739,6 +823,51 @@ function spreadCoincidentPins() {
     node.anchorX = node.geoX + (node.spreadX || 0);
     node.anchorZ = node.geoZ + (node.spreadZ || 0);
   }
+}
+
+/** Line in-range clips up in front of the camera, left to right. */
+function layoutCameraCarousel() {
+  const candidates = state.nodes
+    .filter((n) => n.group && n.inRange !== false)
+    .sort((a, b) => {
+      const da = a.distanceM ?? Infinity;
+      const db = b.distanceM ?? Infinity;
+      if (da !== db) return da - db;
+      return String(a.id).localeCompare(String(b.id));
+    });
+
+  const row = candidates.slice(0, CAROUSEL_MAX);
+  const inRow = new Set(row.map((n) => n.id));
+  for (const node of state.nodes) {
+    if (!node.group) continue;
+    node.group.visible = node.inRange !== false && inRow.has(node.id);
+  }
+  if (!row.length) return;
+
+  if (state.carouselFwdX == null || state.carouselFwdZ == null) {
+    captureCarouselHeading();
+  }
+  let fx = state.carouselFwdX;
+  let fz = state.carouselFwdZ;
+  const flen = Math.hypot(fx, fz);
+  if (flen < 1e-6) {
+    fx = 0;
+    fz = -1;
+  } else {
+    fx /= flen;
+    fz /= flen;
+  }
+  const rx = -fz;
+  const rz = fx;
+
+  const originX = camera ? camera.position.x : 0;
+  const originZ = camera ? camera.position.z : 0;
+  const mid = (row.length - 1) / 2;
+  row.forEach((node, i) => {
+    const t = (i - mid) * CAMERA_SPREAD_M;
+    node.anchorX = originX + fx * CAROUSEL_DIST_M + rx * t;
+    node.anchorZ = originZ + fz * CAROUSEL_DIST_M + rz * t;
+  });
 }
 
 function closestGeoNodes(limit) {
@@ -1444,6 +1573,7 @@ function cameraVideoScale(node) {
 }
 
 function updateNodes(t, dt) {
+  if (state.cameraLayout === "carousel") layoutCameraCarousel();
   for (const node of state.nodes) {
     if (node.anchorX != null) node.group.position.x = node.anchorX;
     if (node.anchorZ != null) node.group.position.z = node.anchorZ;
@@ -3760,6 +3890,8 @@ state.cameraRangeFt = loadCameraRangeFt();
 syncRangeControls();
 ({ min: state.timeMinYr, max: state.timeMaxYr } = loadTimeRange());
 syncTimeControls();
+state.cameraLayout = loadCameraLayout();
+syncLayoutControls();
 
 rangeBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -3800,8 +3932,29 @@ document.getElementById("time-close")?.addEventListener("click", (e) => {
   e.stopPropagation();
   closeTimeSheet();
 });
+
+layoutBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (state.layoutOpen) closeLayoutSheet();
+  else openLayoutSheet();
+});
+layoutPlaceBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setCameraLayout("place");
+  closeLayoutSheet();
+});
+layoutCarouselBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setCameraLayout("carousel");
+  closeLayoutSheet();
+});
+layoutSheet?.addEventListener("click", (e) => e.stopPropagation());
+document.getElementById("layout-close")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  closeLayoutSheet();
+});
 document.addEventListener("click", () => {
-  if (state.rangeOpen || state.timeOpen) closeFilterSheets();
+  if (state.rangeOpen || state.timeOpen || state.layoutOpen) closeFilterSheets();
 });
 
 addBtn?.addEventListener("click", (e) => {
@@ -3871,7 +4024,7 @@ createForm?.addEventListener("submit", async (e) => {
 // Desktop keyboard nudge
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    if (state.rangeOpen || state.timeOpen) {
+    if (state.rangeOpen || state.timeOpen || state.layoutOpen) {
       closeFilterSheets();
       return;
     }
