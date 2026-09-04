@@ -94,4 +94,37 @@ assertNoOverlap(Array(12).fill(5.4), big.radius, big.angles);
 const mixed = carouselRingLayout([2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4]);
 assertNoOverlap([2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4, 2.8, 5.4], mixed.radius, mixed.angles);
 
+function carouselForwardMidAngle(a, b) {
+  let d = b - a;
+  while (d < 0) d += Math.PI * 2;
+  while (d >= Math.PI * 2) d -= Math.PI * 2;
+  return a + d * 0.5;
+}
+
+const between = carouselForwardMidAngle(-0.4, 0.6);
+if (Math.abs(between - 0.1) > 1e-9) throw new Error("year should sit in the gap");
+const wrap = carouselForwardMidAngle(2.5, -2.5);
+if (wrap < 2.5 && wrap > -2.5) throw new Error("wrap gap should sit behind the seam");
+
+const years = [2011, 2011, 2014, 2014, 2015];
+const layout = carouselRingLayout(Array(years.length).fill(2.8));
+const groups = [];
+years.forEach((year, i) => {
+  const last = groups[groups.length - 1];
+  if (last && last.year === year) last.indices.push(i);
+  else groups.push({ year, indices: [i] });
+});
+const yearAlphas = groups.map((group, i) => {
+  const prev = groups[(i + groups.length - 1) % groups.length];
+  const aPrev = layout.angles[prev.indices[prev.indices.length - 1]];
+  const aThis = layout.angles[group.indices[0]];
+  return carouselForwardMidAngle(aPrev, aThis);
+});
+if (yearAlphas.length !== 3) throw new Error("one mark per year");
+const first2014 = layout.angles[2];
+const last2011 = layout.angles[1];
+if (!(yearAlphas[1] > last2011 && yearAlphas[1] < first2014)) {
+  throw new Error("2014 should sit between 2011 clips and 2014 clips");
+}
+
 console.log("carousel-ring tests passed");

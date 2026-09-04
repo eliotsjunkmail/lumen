@@ -943,6 +943,14 @@ function yawTowardOrigin(x, z, originX, originZ) {
   return dx * dx + dz * dz > 1e-8 ? Math.atan2(dx, dz) : 0;
 }
 
+/** Midpoint traveling forward along the ring from angle a to b. */
+function carouselForwardMidAngle(a, b) {
+  let d = b - a;
+  while (d < 0) d += Math.PI * 2;
+  while (d >= Math.PI * 2) d -= Math.PI * 2;
+  return a + d * 0.5;
+}
+
 function nodeTakenYear(node) {
   if (!node?.takenAt) return null;
   const d = new Date(node.takenAt);
@@ -1022,9 +1030,17 @@ function syncCarouselYearMarks(
       mark.visible = false;
       return;
     }
-    const aFirst = angles[group.indices[0]];
-    const aLast = angles[group.indices[group.indices.length - 1]];
-    const alpha = (aFirst + aLast) * 0.5;
+    let alpha;
+    if (groups.length === 1) {
+      const aFirst = angles[group.indices[0]];
+      const aLast = angles[group.indices[group.indices.length - 1]];
+      alpha = (aFirst + aLast) * 0.5;
+    } else {
+      const prev = groups[(i + groups.length - 1) % groups.length];
+      const aPrev = angles[prev.indices[prev.indices.length - 1]];
+      const aThis = angles[group.indices[0]];
+      alpha = carouselForwardMidAngle(aPrev, aThis);
+    }
     const p = pointOnCarouselRing(
       alpha,
       radius,
@@ -1036,7 +1052,7 @@ function syncCarouselYearMarks(
       rz
     );
     mark.position.set(p.x, CAROUSEL_FLOOR_Y - 0.55, p.z);
-    mark.scale.setScalar(2.2);
+    mark.scale.setScalar(1.7);
     _groundEuler.set(0, yawTowardOrigin(p.x, p.z, originX, originZ), 0, "YXZ");
     mark.quaternion.setFromEuler(_groundEuler);
     if (mark.userData.year !== group.year) {
