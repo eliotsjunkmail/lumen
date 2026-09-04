@@ -170,6 +170,7 @@ const state = {
   settingsOpen: false,
   carouselFwdX: null,
   carouselFwdZ: null,
+  carouselYearMarks: [],
 };
 
 let renderer;
@@ -665,6 +666,7 @@ function setCameraLayout(mode, { persist = true } = {}) {
   if (next === "place") {
     state.carouselFwdX = null;
     state.carouselFwdZ = null;
+    hideCarouselYearMarks();
   } else if (changed || state.carouselFwdX == null) {
     captureCarouselHeading();
   }
@@ -793,7 +795,10 @@ function layoutCameraCarousel() {
     if (!node.group) continue;
     node.group.visible = node.inRange !== false && inRow.has(node.id);
   }
-  if (!nearby.length) return;
+  if (!nearby.length) {
+    hideCarouselYearMarks();
+    return;
+  }
 
   if (state.carouselFwdX == null || state.carouselFwdZ == null) {
     captureCarouselHeading();
@@ -826,6 +831,7 @@ function layoutCameraCarousel() {
     node.anchorX = originX + fx * CAROUSEL_DIST_M + rx * t;
     node.anchorZ = originZ + fz * CAROUSEL_DIST_M + rz * t;
   });
+  syncCarouselYearMarks(nearby, slots, mid, originX, originZ, fx, fz, rx, rz);
 }
 
 function carouselNodeWidth(node) {
@@ -834,16 +840,112 @@ function carouselNodeWidth(node) {
     node.kind === "video"
       ? node.frame?.geometry?.parameters?.width || sw + 0.14
       : 0;
-  const lw = node.label?.visible !== false
-    ? node.label?.geometry?.parameters?.width || 2.2
-    : 0;
-  return Math.max(sw, fw, lw, 1.5);
+  return Math.max(sw, fw, 1.5);
 }
 
 function carouselFacingYaw() {
   const fx = state.carouselFwdX ?? 0;
   const fz = state.carouselFwdZ ?? -1;
   return Math.atan2(-fx, -fz);
+}
+
+function nodeTakenYear(node) {
+  if (!node?.takenAt) return null;
+  const d = new Date(node.takenAt);
+  const y = d.getFullYear();
+  return Number.isFinite(y) && y > 1900 && y < 2100 ? y : null;
+}
+
+function createYearMarkTexture(year) {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 160;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "800 92px Syne, sans-serif";
+  ctx.fillStyle = "rgba(6, 16, 12, 0.45)";
+  ctx.fillText(String(year), 258, 84);
+  ctx.fillStyle = "#c6ff4a";
+  ctx.fillText(String(year), 256, 80);
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function ensureCarouselYearMark() {
+  if (!scene) return null;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.35, 0.42),
+    new THREE.MeshBasicMaterial({
+      transparent: true,
+      depthTest: false,
+      side: THREE.DoubleSide,
+    })
+  );
+  mesh.renderOrder = 3;
+  mesh.visible = false;
+  scene.add(mesh);
+  state.carouselYearMarks.push(mesh);
+  return mesh;
+}
+
+function hideCarouselYearMarks() {
+  for (const mark of state.carouselYearMarks) mark.visible = false;
+}
+
+function syncCarouselYearMarks(nearby, slots, mid, originX, originZ, fx, fz, rx, rz) {
+  if (state.cameraLayout !== "carousel" || !scene) {
+    hideCarouselYearMarks();
+    return;
+  }
+
+  const groups = [];
+  nearby.forEach((node, i) => {
+    const year = nodeTakenYear(node);
+    if (year == null) return;
+    const last = groups[groups.length - 1];
+    if (last && last.year === year) last.indices.push(i);
+    else groups.push({ year, indices: [i] });
+  });
+
+  while (state.carouselYearMarks.length < groups.length) ensureCarouselYearMark();
+
+  const yaw = carouselFacingYaw();
+  _groundEuler.set(0, yaw, 0, "YXZ");
+
+  state.carouselYearMarks.forEach((mark, i) => {
+    const group = groups[i];
+    if (!group) {
+      mark.visible = false;
+      return;
+    }
+    const tFirst = slots[group.indices[0]] - mid;
+    const tLast = slots[group.indices[group.indices.length - 1]] - mid;
+    const t = (tFirst + tLast) * 0.5;
+    let minBottom = 0.7;
+    for (const idx of group.indices) {
+      const node = nearby[idx];
+      const h = node.screen?.geometry?.parameters?.height || 1.35;
+      const bottom = (node.baseY || 1.4) - h * 0.5;
+      if (bottom < minBottom) minBottom = bottom;
+    }
+    mark.position.set(
+      originX + fx * CAROUSEL_DIST_M + rx * t,
+      minBottom - 0.48,
+      originZ + fz * CAROUSEL_DIST_M + rz * t
+    );
+    mark.quaternion.setFromEuler(_groundEuler);
+    if (mark.userData.year !== group.year) {
+      const prev = mark.material.map;
+      mark.material.map = createYearMarkTexture(group.year);
+      mark.material.needsUpdate = true;
+      mark.userData.year = group.year;
+      prev?.dispose?.();
+    }
+    mark.visible = true;
+  });
 }
 
 function nodeTakenMs(node) {
@@ -961,37 +1063,17 @@ function hideUploadOverlay() {
   if (addBtn) addBtn.disabled = false;
 }
 
-function createCarouselLabelTexture(title, date) {
-  const c = document.createElement("canvas");
-  c.width = 1024;
-  c.height = 256;
-  const ctx = c.getContext("2d");
-  ctx.clearRect(0, 0, c.width, c.height);
-  ctx.fillStyle = "rgba(6, 16, 12, 0.72)";
-  roundRect(ctx, 24, 36, 976, 184, 28);
-  ctx.fill();
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#eef7f0";
-  ctx.font = "800 52px Syne, sans-serif";
-  ctx.fillText(String(title || "").slice(0, 28), 512, 128);
-  ctx.fillStyle = "rgba(238, 247, 240, 0.75)";
-  ctx.font = "600 36px Manrope, sans-serif";
-  ctx.fillText(String(date || ""), 512, 184);
-  const texture = new THREE.CanvasTexture(c);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
 function syncLabelPlacement(node) {
   if (!node?.label) return;
   const h = node.screen?.geometry?.parameters?.height || 1.35;
   if (state.cameraLayout === "carousel") {
-    node.label.position.set(0, -h * 0.5 - 0.5, 0.02);
+    node.label.visible = false;
     if (node.beacon) node.beacon.visible = false;
-  } else {
-    node.label.position.set(0, h * 0.5 + 0.55, 0.02);
-    if (node.beacon) node.beacon.visible = node.kind !== "image";
+    return;
   }
+  node.label.position.set(0, h * 0.5 + 0.55, 0.02);
+  node.label.visible = node.kind !== "image";
+  if (node.beacon) node.beacon.visible = node.kind !== "image";
 }
 
 function createLabelTexture(title, blurb, { reserveDelete = false, thumbs = 0, kind = "video" } = {}) {
@@ -1053,24 +1135,21 @@ function createThumbsBadgeTexture(count) {
 
 function refreshNodeChrome(node) {
   if (!node?.label) return;
-  const old = node.label.material.map;
   if (state.cameraLayout === "carousel") {
-    node.label.material.map = createCarouselLabelTexture(
-      node.title,
-      formatTakenLabel(node.takenAt)
-    );
-    node.label.visible = true;
+    node.label.visible = false;
+    syncLabelPlacement(node);
   } else {
+    const old = node.label.material.map;
     node.label.material.map = createLabelTexture(node.title, node.blurb || "", {
       reserveDelete: Boolean(node.deletable),
       thumbs: node.thumbs || 0,
       kind: node.kind || "video",
     });
+    node.label.material.needsUpdate = true;
+    old?.dispose?.();
     node.label.visible = node.kind !== "image";
+    syncLabelPlacement(node);
   }
-  node.label.material.needsUpdate = true;
-  old?.dispose?.();
-  syncLabelPlacement(node);
 
   const count = node.thumbs || 0;
   if (count > 0) {
