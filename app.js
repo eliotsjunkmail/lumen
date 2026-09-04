@@ -1259,7 +1259,6 @@ function refreshNodeChrome(node) {
   } else {
     const old = node.label.material.map;
     node.label.material.map = createLabelTexture(node.title, node.blurb || "", {
-      reserveDelete: Boolean(node.deletable),
       thumbs: node.thumbs || 0,
       kind: node.kind || "video",
     });
@@ -1474,7 +1473,6 @@ function createNode(item, index) {
     new THREE.PlaneGeometry(2.2, 0.55),
     new THREE.MeshBasicMaterial({
       map: createLabelTexture(item.title, item.blurb, {
-        reserveDelete: Boolean(item.deletable),
         kind,
       }),
       transparent: true,
@@ -1639,7 +1637,6 @@ function removeNode(node) {
   state.nodes = state.nodes.filter((n) => n !== node);
 
   if (state.focused === node) setFocus(null);
-  else updateDeleteControls();
 
   if (state.mapOpen) refreshMapList();
   syncLeafletMarkers();
@@ -1647,41 +1644,16 @@ function removeNode(node) {
 }
 
 function updateDeleteControls() {
-  const canDelete = Boolean(state.focused?.deletable) && !state.watching;
-  deleteBtn.hidden = !canDelete;
-  if (!canDelete) {
+  if (deleteBtn) {
+    deleteBtn.hidden = true;
     deleteBtn.style.visibility = "hidden";
   }
-  if (theaterDelete) {
-    theaterDelete.hidden = !(
-      state.watching && state.watchingNode?.deletable
-    );
-  }
+  if (theaterDelete) theaterDelete.hidden = true;
 }
 
 /** Pin the × to the right side of the title label (red-circle spot). */
 function positionDeleteBtn() {
-  const node = state.focused;
-  if (!node?.deletable || state.watching || deleteBtn.hidden || !camera || !node.label) {
-    return;
-  }
-
-  const w = (node.label.geometry.parameters?.width ?? 2.2) * 0.5;
-  // Sit in the title bar on the far right, vertically centered in the label
-  _corner.set(w - 0.12, 0.02, 0.05);
-  node.label.localToWorld(_corner);
-  _corner.project(camera);
-
-  if (_corner.z > 1) {
-    deleteBtn.style.visibility = "hidden";
-    return;
-  }
-
-  const x = (_corner.x * 0.5 + 0.5) * window.innerWidth;
-  const y = (-_corner.y * 0.5 + 0.5) * window.innerHeight;
-  deleteBtn.style.visibility = "visible";
-  deleteBtn.style.left = `${x}px`;
-  deleteBtn.style.top = `${y}px`;
+  if (deleteBtn) deleteBtn.style.visibility = "hidden";
 }
 
 function buildScene() {
@@ -2635,7 +2607,6 @@ function openTheater(node, opts = {}) {
     ? `${node.title} 👍${node.thumbs > 1 ? node.thumbs : ""}`
     : node.title;
   theaterTitle.textContent = takenTitle ? `${baseTitle} · ${takenTitle}` : baseTitle;
-  theaterDelete.hidden = !node.deletable;
 
   const isImage = node.kind === "image";
   theaterScreenWrap?.classList.toggle("is-image", isImage);
@@ -2701,7 +2672,6 @@ function closeTheaterMode() {
   state.theaterFromMap = false;
   field.classList.remove("is-watching");
   theater.hidden = true;
-  theaterDelete.hidden = true;
   theaterScreenWrap?.classList.remove("is-image");
   if (theaterImage) {
     theaterImage.hidden = true;
@@ -3368,24 +3338,6 @@ radar?.addEventListener("click", (e) => {
 });
 mapClose?.addEventListener("click", closeMapModal);
 mapBackdrop?.addEventListener("click", closeMapModal);
-deleteBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  if (state.focused?.deletable) removeNode(state.focused);
-});
-theaterDelete.addEventListener("click", (e) => {
-  e.stopPropagation();
-  requestTheaterDelete();
-});
-confirmCancel?.addEventListener("click", closeConfirmModal);
-confirmModal?.addEventListener("click", (e) => {
-  if (e.target === confirmModal) closeConfirmModal();
-});
-confirmOk?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  const node = state.watchingNode || state.focused;
-  closeConfirmModal();
-  if (node?.deletable) removeNode(node);
-});
 
 function updateUploadNote(count) {
   if (!uploadNote) return;
