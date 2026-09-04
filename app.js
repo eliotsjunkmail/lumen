@@ -20,12 +20,15 @@ const RADAR_DOT_COUNT = 10;
 const MAP_LIST_COUNT = 20;
 const CAMERA_SPREAD_M = 2.05;
 const CAMERA_STACK_M = 2.4;
-const CAROUSEL_DIST_M = 4.4;
+const CAROUSEL_DIST_M = 3.2;
 const CAROUSEL_MAX = 12;
-const CAROUSEL_GAP_M = 0.42;
+const CAROUSEL_GAP_M = 0.32;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
+/** Horizontal FOV in carousel so side clips wrap around a portrait view. */
+const CAROUSEL_HFOV = 100;
+const CAROUSEL_FOV_MAX = 145;
 
 /** Stable anonymous id so users can delete their own shared pins. */
 function getDeviceId() {
@@ -171,6 +174,7 @@ const state = {
   carouselFwdX: null,
   carouselFwdZ: null,
   carouselYearMarks: [],
+  fovPinched: false,
 };
 
 let renderer;
@@ -659,6 +663,26 @@ function captureCarouselHeading() {
   state.carouselFwdZ = f.z;
 }
 
+function applyLayoutFov() {
+  if (!camera) return;
+  const aspect =
+    camera.aspect ||
+    (window.innerHeight > 0 ? window.innerWidth / window.innerHeight : 0.5);
+  if (state.cameraLayout === "carousel") {
+    if (!state.fovPinched) {
+      const h = THREE.MathUtils.degToRad(CAROUSEL_HFOV);
+      camera.fov = THREE.MathUtils.radToDeg(
+        2 * Math.atan(Math.tan(h * 0.5) / Math.max(0.2, aspect))
+      );
+    }
+    camera.fov = THREE.MathUtils.clamp(camera.fov, LOOK_FOV_MIN, CAROUSEL_FOV_MAX);
+  } else {
+    if (!state.fovPinched) camera.fov = LOOK_FOV_DEFAULT;
+    camera.fov = THREE.MathUtils.clamp(camera.fov, LOOK_FOV_MIN, LOOK_FOV_MAX);
+  }
+  camera.updateProjectionMatrix();
+}
+
 function setCameraLayout(mode, { persist = true } = {}) {
   const next = mode === "carousel" ? "carousel" : "place";
   const changed = state.cameraLayout !== next;
@@ -670,6 +694,8 @@ function setCameraLayout(mode, { persist = true } = {}) {
   } else if (changed || state.carouselFwdX == null) {
     captureCarouselHeading();
   }
+  if (changed) state.fovPinched = false;
+  applyLayoutFov();
   syncLayoutControls();
   if (persist) {
     try {
@@ -839,7 +865,7 @@ function carouselNodeWidth(node) {
     node.kind === "video"
       ? node.frame?.geometry?.parameters?.width || sw + 0.14
       : 0;
-  return Math.max(sw, fw, 1.5);
+  return Math.max(sw, fw, 1.15);
 }
 
 function carouselRingVectors() {
@@ -1649,6 +1675,7 @@ function buildScene() {
     20000
   );
   camera.position.set(0, 1.4, 0);
+  applyLayoutFov();
 
   renderer = new THREE.WebGLRenderer({
     canvas,
@@ -2790,10 +2817,11 @@ function bindLookControls() {
     if (!camera || pointers.size < 2 || pinchStartDist < 8) return;
     const d = pinchDist();
     if (d < 8) return;
+    state.fovPinched = true;
     camera.fov = THREE.MathUtils.clamp(
       pinchStartFov * (pinchStartDist / d),
       LOOK_FOV_MIN,
-      LOOK_FOV_MAX
+      state.cameraLayout === "carousel" ? CAROUSEL_FOV_MAX : LOOK_FOV_MAX
     );
     camera.updateProjectionMatrix();
   };
@@ -2955,7 +2983,7 @@ function resolveWatchNode() {
 function onResize() {
   if (!camera || !renderer) return;
   camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  applyLayoutFov();
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
