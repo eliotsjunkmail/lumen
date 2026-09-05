@@ -24,6 +24,8 @@ import {
   carouselHudBandPx,
   clampShiftToBand,
   carouselTravelShiftY,
+  carouselAimAngle,
+  stickyViewSize,
 } from "./carousel-tilt.js";
 import {
   playGrowTarget,
@@ -234,6 +236,7 @@ const state = {
   carouselTiltT: 0,
   carouselPitchBaseline: null,
   carouselDragY: 0,
+  carouselViewH: 0,
   showCreate: false,
   fovPinched: false,
   mediaLoading: false,
@@ -1034,7 +1037,11 @@ function layoutCameraCarousel() {
     }
   }
 
-  const viewH = renderer?.domElement?.clientHeight || window.innerHeight || 1;
+  const viewH = stickyViewSize(
+    state.carouselViewH,
+    renderer?.domElement?.clientHeight || window.innerHeight || 1
+  );
+  state.carouselViewH = viewH;
   const hudEl = document.querySelector(".hud-top");
   const { topPx, botPx } = carouselHudBandPx(
     hudEl?.getBoundingClientRect?.().bottom,
@@ -3453,10 +3460,10 @@ function pausePreviews(exceptId) {
 function pickCenter() {
   // Aim-cone focus: must be in range for geo pins; billboard faces you from any side
   camera.getWorldDirection(_forward);
+  const carousel = state.cameraLayout === "carousel";
   let best = null;
   let bestScore = Infinity;
-  const maxDist =
-    state.cameraLayout === "carousel" ? 240 : geoRangeM() + 4;
+  const maxDist = carousel ? 240 : geoRangeM() + 4;
 
   for (const node of state.nodes) {
     if (!node.group.visible) continue;
@@ -3464,8 +3471,16 @@ function pickCenter() {
     _to.copy(node.group.position).sub(camera.position);
     const dist = _to.length();
     if (dist < 0.35 || dist > maxDist) continue;
-    _to.normalize();
-    const ang = Math.acos(THREE.MathUtils.clamp(_forward.dot(_to), -1, 1));
+    const ang = carousel
+      ? carouselAimAngle(
+          camera.position.x,
+          camera.position.z,
+          node.group.position.x,
+          node.group.position.z,
+          _forward.x,
+          _forward.z
+        )
+      : Math.acos(THREE.MathUtils.clamp(_forward.dot(_to.normalize()), -1, 1));
     if (ang > 0.48) continue;
     const score = ang * 2.2 + dist * 0.08;
     if (score < bestScore) {
@@ -3913,6 +3928,7 @@ function resolveWatchNode() {
 
 function onResize() {
   if (!camera || !renderer) return;
+  state.carouselViewH = 0;
   camera.aspect = window.innerWidth / window.innerHeight;
   applyLayoutFov();
   renderer.setSize(window.innerWidth, window.innerHeight);

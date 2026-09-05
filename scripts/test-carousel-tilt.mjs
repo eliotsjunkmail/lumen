@@ -9,6 +9,8 @@ import {
   carouselHudBandPx,
   clampShiftToBand,
   carouselTravelShiftY,
+  carouselAimAngle,
+  stickyViewSize,
 } from "../carousel-tilt.js";
 
 if (carouselTiltAmount(0, 0.2) !== 0) {
@@ -138,9 +140,27 @@ if (Math.abs(clampShiftToBand(4, 0, 2, -1, 5) - 3) > 1e-9) {
 if (Math.abs(clampShiftToBand(-3, 0, 2, -1, 5) - -1) > 1e-9) {
   throw new Error("shift should stop when the stack hits the lens floor");
 }
-const centered = clampShiftToBand(0, 0, 8, -1, 5);
-if (Math.abs(centered - -2) > 1e-9) {
-  throw new Error("a taller stack should center in the band");
+const pinnedLow = clampShiftToBand(-10, 0, 8, -1, 5);
+if (Math.abs(pinnedLow - -1) > 1e-9) {
+  throw new Error("a taller stack should stay on the floor when pulled down");
+}
+const pinnedHigh = clampShiftToBand(10, 0, 8, -1, 5);
+if (Math.abs(pinnedHigh - -3) > 1e-9) {
+  throw new Error("a taller stack should stay on the header when lifted");
+}
+
+if (Math.abs(carouselAimAngle(0, 0, 0, -6.2, 0, -1)) > 1e-9) {
+  throw new Error("a clip on heading should stay aimed after it slides down");
+}
+if (carouselAimAngle(0, 0, 6.2, 0, 0, -1) < 1.5) {
+  throw new Error("a clip off to the side should stay outside the aim cone");
+}
+
+if (stickyViewSize(844, 848) !== 844) {
+  throw new Error("tiny viewport chatter should not move the floor");
+}
+if (stickyViewSize(844, 700) !== 700) {
+  throw new Error("a real resize should update the floor");
 }
 
 if (Math.abs(carouselTravelShiftY(0, 0.2, 3, -3) - 0.2) > 1e-9) {

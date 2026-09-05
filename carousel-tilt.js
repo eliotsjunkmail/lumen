@@ -48,12 +48,35 @@ export function clampShiftToBand(shiftY, stackBottom, stackTop, bandBottom, band
   const stackH = stackTop - stackBottom;
   const bandH = bandTop - bandBottom;
   if (!(stackH > 0) || !(bandH > 0)) return shiftY;
-  if (stackH >= bandH) {
-    return (bandBottom + bandTop) * 0.5 - (stackBottom + stackTop) * 0.5;
-  }
   const lo = bandBottom - stackBottom;
   const hi = bandTop - stackTop;
+  if (lo > hi) {
+    // Taller than the band: stay on the end the user is asking for.
+    return shiftY < (lo + hi) * 0.5 ? lo : hi;
+  }
   return Math.min(hi, Math.max(lo, shiftY));
+}
+
+/**
+ * Horizontal-only aim angle so dragging the ring down does not drop focus.
+ * 0 = on heading, π = behind you.
+ */
+export function carouselAimAngle(fromX, fromZ, toX, toZ, fwdX, fwdZ) {
+  const dx = toX - fromX;
+  const dz = toZ - fromZ;
+  const dlen = Math.hypot(dx, dz);
+  const flen = Math.hypot(fwdX, fwdZ);
+  if (dlen < 1e-6 || flen < 1e-6) return Math.PI;
+  return Math.acos(
+    Math.min(1, Math.max(-1, (dx * fwdX + dz * fwdZ) / (dlen * flen)))
+  );
+}
+
+/** Ignore tiny viewport chatter (iOS chrome) so the floor does not bounce. */
+export function stickyViewSize(prev, next, slack = 12) {
+  if (!(next > 0)) return prev > 0 ? prev : 1;
+  if (prev > 0 && Math.abs(next - prev) < slack) return prev;
+  return next;
 }
 
 /** t=0 stays at rest; t→−1 reaches the header; t→+1 reaches the lens floor. */
