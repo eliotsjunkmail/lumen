@@ -525,7 +525,9 @@ button {
 }
 
 .add-fab {
-  z-index: 4;
+  z-index: 8;
+  isolation: isolate;
+  pointer-events: auto;
   left: 0;
   right: 0;
   bottom: calc(18px + var(--safe-bottom));

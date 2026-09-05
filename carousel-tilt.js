@@ -7,7 +7,7 @@ export function carouselTiltAmount(pitch, span, gain = 1) {
 
 /**
  * Signed tilt across the header–shutter band.
- * −1 = look down (photos toward the top bar), +1 = look up (photos toward the shutter).
+ * −1 = look down (photos toward the top bar), +1 = look up (photos toward the lens floor).
  */
 export function carouselTiltTravel(pitch, span, gain = 1) {
   if (!(span > 1e-6)) return 0;
@@ -28,19 +28,18 @@ export function screenYToWorldY(screenY, viewH, camY, dist, vFovDeg) {
   return camY + ndcY * halfH;
 }
 
-/** Header bottom → shutter top, in CSS pixels. */
+/** Header bottom → viewport floor, in CSS pixels. */
 export function carouselHudBandPx(
   hudBottom,
-  addTop,
+  viewBottom,
   viewH,
   topPad = 10,
-  botPad = 18
+  botPad = 4
 ) {
   const h = viewH > 0 ? viewH : 800;
   const topPx = Number.isFinite(hudBottom) ? hudBottom + topPad : Math.min(72, h * 0.1);
-  const botPx = Number.isFinite(addTop)
-    ? addTop - botPad
-    : Math.max(h * 0.82, h - 110);
+  const floor = Number.isFinite(viewBottom) ? viewBottom : h;
+  const botPx = Math.max(topPx + 8, floor - botPad);
   return { topPx, botPx };
 }
 
@@ -57,7 +56,7 @@ export function clampShiftToBand(shiftY, stackBottom, stackTop, bandBottom, band
   return Math.min(hi, Math.max(lo, shiftY));
 }
 
-/** t=0 stays at rest; t→−1 reaches the header; t→+1 reaches the shutter. */
+/** t=0 stays at rest; t→−1 reaches the header; t→+1 reaches the lens floor. */
 export function carouselTravelShiftY(tiltT, restShift, highShift, lowShift) {
   const t = Math.min(1, Math.max(-1, Number.isFinite(tiltT) ? tiltT : 0));
   if (t <= 0) return restShift + (highShift - restShift) * -t;

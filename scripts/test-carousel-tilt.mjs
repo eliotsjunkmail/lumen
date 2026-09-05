@@ -99,16 +99,16 @@ if (carouselTiltTravel(0.2, 0.36) >= 0) {
   throw new Error("looking down should send photos toward the header");
 }
 if (carouselTiltTravel(-0.2, 0.36) <= 0) {
-  throw new Error("looking up should send photos toward the shutter");
+  throw new Error("looking up should send photos toward the lens floor");
 }
 if (Math.abs(carouselTiltTravel(-0.36, 0.36) - 1) > 1e-9) {
-  throw new Error("full look-up should reach the shutter end");
+  throw new Error("full look-up should reach the lens floor");
 }
 if (Math.abs(carouselTiltTravel(0.36, 0.36) - -1) > 1e-9) {
   throw new Error("full look-down should reach the header end");
 }
 if (carouselTiltTravel(-1, 0.36) !== 1) {
-  throw new Error("extra look-up should clamp to the shutter end");
+  throw new Error("extra look-up should clamp to the lens floor");
 }
 
 const midY = screenYToWorldY(400, 800, 1.4, 6.2, 60);
@@ -125,9 +125,9 @@ if (Math.abs(screenTopY - (1.4 + halfH)) > 1e-9) {
   throw new Error("top of screen should match the frustum half-height");
 }
 
-const band = carouselHudBandPx(64, 720, 800);
+const band = carouselHudBandPx(64, 800, 800);
 if (band.topPx !== 74) throw new Error("band top should sit just under the header");
-if (band.botPx !== 702) throw new Error("band bottom should sit just above the shutter");
+if (band.botPx !== 796) throw new Error("band bottom should sit on the lens floor");
 
 if (Math.abs(clampShiftToBand(0, 0, 2, -1, 5) - 0) > 1e-9) {
   throw new Error("a stack already in the band should keep its shift");
@@ -136,7 +136,7 @@ if (Math.abs(clampShiftToBand(4, 0, 2, -1, 5) - 3) > 1e-9) {
   throw new Error("shift should stop when the stack hits the header");
 }
 if (Math.abs(clampShiftToBand(-3, 0, 2, -1, 5) - -1) > 1e-9) {
-  throw new Error("shift should stop when the stack hits the shutter");
+  throw new Error("shift should stop when the stack hits the lens floor");
 }
 const centered = clampShiftToBand(0, 0, 8, -1, 5);
 if (Math.abs(centered - -2) > 1e-9) {
@@ -150,10 +150,15 @@ if (Math.abs(carouselTravelShiftY(-1, 0.2, 3, -3) - 3) > 1e-9) {
   throw new Error("full look-down should lift to the header");
 }
 if (Math.abs(carouselTravelShiftY(1, 0.2, 3, -3) - -3) > 1e-9) {
-  throw new Error("full look-up should drop to the shutter");
+  throw new Error("full look-up should drop to the lens floor");
 }
 if (Math.abs(carouselTravelShiftY(-0.5, 0.2, 3, -3) - 1.6) > 1e-9) {
   throw new Error("halfway look-down should sit between rest and the header");
+}
+
+const focusDown = clampShiftToBand(-8, 1.5, 4, -2, 6);
+if (Math.abs(focusDown - -3.5) > 1e-9) {
+  throw new Error("a focused clip should be able to drop its bottom to the lens floor");
 }
 
 function nodePosterReady(node) {

@@ -1032,19 +1032,24 @@ function layoutCameraCarousel() {
 
   const viewH = renderer?.domElement?.clientHeight || window.innerHeight || 1;
   const hudEl = document.querySelector(".hud-top");
-  const addEl = addBtn || document.getElementById("add-btn");
   const { topPx, botPx } = carouselHudBandPx(
     hudEl?.getBoundingClientRect?.().bottom,
-    addEl?.getBoundingClientRect?.().top,
+    viewH,
     viewH
   );
   const camY = camera?.position.y ?? 1.4;
   const fov = camera?.fov ?? LOOK_FOV_DEFAULT;
   const bandTop = screenYToWorldY(topPx, viewH, camY, radius, fov);
   const bandBottom = screenYToWorldY(botPx, viewH, camY, radius, fov);
+  let travelBottom = stackBottom;
+  const focused = state.focused;
+  if (focused?.group && columns.some((col) => col.includes(focused))) {
+    const fh = carouselNodeHeight(focused);
+    travelBottom = focused.anchorY - fh * 0.5;
+  }
   const restShift = -CAROUSEL_DROP_Y;
   const highShift = bandTop - stackTop;
-  const lowShift = bandBottom - stackBottom;
+  const lowShift = bandBottom - travelBottom;
   const targetT = carouselTiltTravel(
     state.carouselLookPitch,
     CAROUSEL_TILT_SPAN,
@@ -1059,7 +1064,7 @@ function layoutCameraCarousel() {
   );
   let shiftY = clampShiftToBand(
     tiltShift + state.carouselDragY,
-    stackBottom,
+    travelBottom,
     stackTop,
     bandBottom,
     bandTop
