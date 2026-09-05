@@ -78,7 +78,7 @@ const LOOK_FOV_MAX = 78;
 const CAROUSEL_HFOV = 40;
 const CAROUSEL_HFOV_SMALL = 56;
 const CAROUSEL_FOV_MAX = 145;
-/** Dark matte around video and image planes. */
+/** Dark matte around image planes. Video frames stay clear. */
 const CLIP_FRAME_COLOR = 0x242424;
 
 /** Stable anonymous id so users can delete their own shared pins. */
@@ -1894,21 +1894,22 @@ function createNode(item, index) {
   );
   frame.position.z = -0.01;
   frame.position.y = 0.2;
-  frame.visible = true;
+  frame.visible = kind === "image";
 
   const backing = new THREE.Mesh(
     new THREE.PlaneGeometry(2.56, 1.51),
     new THREE.MeshBasicMaterial({
       color: 0x000000,
-      transparent: false,
-      depthWrite: true,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
       depthTest: true,
       side: THREE.DoubleSide,
     })
   );
   backing.position.z = -0.02;
   backing.position.y = 0.2;
-  backing.visible = kind !== "image";
+  backing.visible = false;
 
   const label = new THREE.Mesh(
     new THREE.PlaneGeometry(2.2, 0.55),
@@ -2332,11 +2333,8 @@ function updateNodes(t, dt) {
         ensurePreview(node);
       }
     }
-    if (node.backing && node.kind === "video") {
-      const map = node.screen?.material?.map;
-      const hasPic = Boolean(map && map !== node.placeholderTex);
-      node.backing.visible = !(front && hasPic);
-    }
+    if (node.backing) node.backing.visible = false;
+    if (node.frame && node.kind === "video") node.frame.visible = false;
     const zLift = front ? 0.22 + (node.playGrow || 0) * 0.12 : 0;
     if (node.kind === "image") {
       if (node.frame) node.frame.visible = true;
