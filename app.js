@@ -31,6 +31,10 @@ import {
   playGrowScale,
   layoutSizeWithGrow,
 } from "./play-grow.js";
+import {
+  videoHasPaintedFrame,
+  waitForPaintedVideoFrame,
+} from "./video-preview.js";
 
 const CAMERA_RANGE_MIN_FT = 25;
 const CAMERA_RANGE_MAX_FT = 10 * 5280;
@@ -1725,20 +1729,62 @@ function videoPosterSrc(node) {
 function setNodeMap(node, tex) {
   if (!node?.screen?.material || !tex) return;
   node.texture = tex;
-  node.screen.material.map = tex;
+  if (node.screen.material.map !== tex) {
+    node.screen.material.map = tex;
+    node.screen.material.needsUpdate = true;
+  }
   node.screen.material.transparent = node.kind === "image";
   node.screen.material.opacity = 1;
-  node.screen.material.depthWrite = true;
-  node.screen.material.needsUpdate = true;
+}
+
+function ensureVideoCanvas(node) {
+  if (node.videoCanvasTex) return node.videoCanvasTex;
+  const canvas = document.createElement("canvas");
+  canvas.width = 16;
+  canvas.height = 16;
+  node.videoCanvas = canvas;
+  node.videoCtx = canvas.getContext("2d");
+  node.videoCanvasTex = new THREE.CanvasTexture(canvas);
+  node.videoCanvasTex.colorSpace = THREE.SRGBColorSpace;
+  node.videoCanvasTex.minFilter = THREE.LinearFilter;
+  node.videoCanvasTex.generateMipmaps = false;
+  return node.videoCanvasTex;
+}
+
+/** Copy a decoded video frame so iOS WebGL does not show a black VideoTexture. */
+function paintVideoFrame(node) {
+  const video = node?.video;
+  if (!videoHasPaintedFrame(video)) return false;
+  const tex = ensureVideoCanvas(node);
+  const canvas = node.videoCanvas;
+  const ctx = node.videoCtx;
+  if (!canvas || !ctx) return false;
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  try {
+    ctx.drawImage(video, 0, 0, w, h);
+  } catch {
+    return false;
+  }
+  tex.needsUpdate = true;
+  setNodeMap(node, tex);
+  return true;
 }
 
 function showLiveVideoTexture(node) {
   if (!node?.video) return;
+  if (paintVideoFrame(node)) return;
   if (!node.videoTex) {
     node.videoTex = new THREE.VideoTexture(node.video);
     node.videoTex.colorSpace = THREE.SRGBColorSpace;
+    node.videoTex.minFilter = THREE.LinearFilter;
     node.videoTex.generateMipmaps = false;
   }
+  node.videoTex.needsUpdate = true;
   setNodeMap(node, node.videoTex);
 }
 
@@ -1919,6 +1965,10 @@ function createNode(item, index) {
     posterFailed: false,
     videoTex: null,
     posterSrc: "",
+    placeholderTex: kind === "video" ? texture : null,
+    videoCanvas: null,
+    videoCtx: null,
+    videoCanvasTex: null,
     animFrames,
     animCanvas,
     animCtx,
@@ -1994,7 +2044,12 @@ function disposeNode(node) {
       }
     }
   }
-  const textures = new Set([node.texture, node.posterTex, node.videoTex]);
+  const textures = new Set([
+    node.texture,
+    node.posterTex,
+    node.videoTex,
+    node.videoCanvasTex,
+  ]);
   for (const tex of textures) tex?.dispose();
   node.screen.geometry.dispose();
   node.frame.geometry.dispose();
@@ -2256,6 +2311,18 @@ function updateNodes(t, dt) {
     const grow = playGrowScale(node.playGrow);
     const front = hot || grow > 1.02;
     applyFocusLayer(node, front);
+    if (node.kind === "video" && hot && !state.watching) {
+      if (node.previewing) {
+        if (!paintVideoFrame(node) && node.posterTex) showPosterTexture(node);
+      } else {
+        ensurePreview(node);
+      }
+    }
+    if (node.backing && node.kind === "video") {
+      const map = node.screen?.material?.map;
+      const hasPic = Boolean(map && map !== node.placeholderTex);
+      node.backing.visible = !(front && hasPic);
+    }
     const zLift = front ? 0.22 + (node.playGrow || 0) * 0.12 : 0;
     if (node.kind === "image") {
       node.frame.visible = false;
@@ -3345,36 +3412,26 @@ function updateGuideArrow() {
   guide.classList.add("is-on");
 }
 
-async function waitForVideoFrame(video) {
-  if (!video) return;
-  if (video.readyState >= 2 && !video.paused && video.currentTime > 0) return;
-  await new Promise((resolve) => {
-    let settled = false;
-    const done = () => {
-      if (settled) return;
-      settled = true;
-      video.removeEventListener("playing", done);
-      video.removeEventListener("timeupdate", done);
-      resolve();
-    };
-    video.addEventListener("playing", done);
-    video.addEventListener("timeupdate", done);
-    setTimeout(done, 600);
-  });
-}
-
 async function ensurePreview(node) {
-  if (!node || node.previewing || state.watching) return;
+  if (!node || node.previewing || node.previewLock || state.watching) return;
   if (!node.video || node.kind === "image") return;
+  node.previewLock = true;
   showPosterTexture(node);
   try {
+    node.video.preload = "auto";
     await node.video.play();
-    await waitForVideoFrame(node.video);
+    const gotFrame = await waitForPaintedVideoFrame(node.video);
     if (state.focused !== node || state.watching) return;
+    if (!gotFrame) {
+      showPosterTexture(node);
+      return;
+    }
     node.previewing = true;
     showLiveVideoTexture(node);
   } catch {
     showPosterTexture(node);
+  } finally {
+    node.previewLock = false;
   }
 }
 
