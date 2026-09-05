@@ -4,6 +4,11 @@ import {
   carouselRowSpan,
   carouselDragLiftDelta,
   carouselRelativePitch,
+  carouselTiltTravel,
+  screenYToWorldY,
+  carouselHudBandPx,
+  clampShiftToBand,
+  carouselTravelShiftY,
 } from "../carousel-tilt.js";
 
 if (carouselTiltAmount(0, 0.2) !== 0) {
@@ -86,6 +91,70 @@ function defaultVideoSize(stored) {
 if (defaultVideoSize(null) !== "small") throw new Error("new users should get small clips");
 if (defaultVideoSize("large") !== "large") throw new Error("saved large should stick");
 if (defaultVideoSize("small") !== "small") throw new Error("saved small should stick");
+
+if (Math.abs(carouselTiltTravel(0, 0.36) - 0) > 1e-9) {
+  throw new Error("level phone should stay at rest travel");
+}
+if (carouselTiltTravel(0.2, 0.36) >= 0) {
+  throw new Error("looking down should send photos toward the header");
+}
+if (carouselTiltTravel(-0.2, 0.36) <= 0) {
+  throw new Error("looking up should send photos toward the shutter");
+}
+if (Math.abs(carouselTiltTravel(-0.36, 0.36) - 1) > 1e-9) {
+  throw new Error("full look-up should reach the shutter end");
+}
+if (Math.abs(carouselTiltTravel(0.36, 0.36) - -1) > 1e-9) {
+  throw new Error("full look-down should reach the header end");
+}
+if (carouselTiltTravel(-1, 0.36) !== 1) {
+  throw new Error("extra look-up should clamp to the shutter end");
+}
+
+const midY = screenYToWorldY(400, 800, 1.4, 6.2, 60);
+if (Math.abs(midY - 1.4) > 1e-9) {
+  throw new Error("screen mid should sit at camera height");
+}
+const screenTopY = screenYToWorldY(0, 800, 1.4, 6.2, 60);
+const screenBotY = screenYToWorldY(800, 800, 1.4, 6.2, 60);
+if (!(screenTopY > midY && screenBotY < midY)) {
+  throw new Error("screen top should be above camera, bottom below");
+}
+const halfH = 6.2 * Math.tan((60 * Math.PI) / 360);
+if (Math.abs(screenTopY - (1.4 + halfH)) > 1e-9) {
+  throw new Error("top of screen should match the frustum half-height");
+}
+
+const band = carouselHudBandPx(64, 720, 800);
+if (band.topPx !== 74) throw new Error("band top should sit just under the header");
+if (band.botPx !== 702) throw new Error("band bottom should sit just above the shutter");
+
+if (Math.abs(clampShiftToBand(0, 0, 2, -1, 5) - 0) > 1e-9) {
+  throw new Error("a stack already in the band should keep its shift");
+}
+if (Math.abs(clampShiftToBand(4, 0, 2, -1, 5) - 3) > 1e-9) {
+  throw new Error("shift should stop when the stack hits the header");
+}
+if (Math.abs(clampShiftToBand(-3, 0, 2, -1, 5) - -1) > 1e-9) {
+  throw new Error("shift should stop when the stack hits the shutter");
+}
+const centered = clampShiftToBand(0, 0, 8, -1, 5);
+if (Math.abs(centered - -2) > 1e-9) {
+  throw new Error("a taller stack should center in the band");
+}
+
+if (Math.abs(carouselTravelShiftY(0, 0.2, 3, -3) - 0.2) > 1e-9) {
+  throw new Error("neutral tilt should keep the rest pose");
+}
+if (Math.abs(carouselTravelShiftY(-1, 0.2, 3, -3) - 3) > 1e-9) {
+  throw new Error("full look-down should lift to the header");
+}
+if (Math.abs(carouselTravelShiftY(1, 0.2, 3, -3) - -3) > 1e-9) {
+  throw new Error("full look-up should drop to the shutter");
+}
+if (Math.abs(carouselTravelShiftY(-0.5, 0.2, 3, -3) - 1.6) > 1e-9) {
+  throw new Error("halfway look-down should sit between rest and the header");
+}
 
 function nodePosterReady(node) {
   if (!node || node.kind === "image") return true;

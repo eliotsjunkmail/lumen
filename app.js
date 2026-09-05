@@ -17,11 +17,13 @@ import {
   fetchTownName,
 } from "./place-geo.js";
 import {
-  carouselTiltAmount,
-  carouselRowShiftY,
-  carouselRowSpan,
   carouselDragLiftDelta,
   carouselRelativePitch,
+  carouselTiltTravel,
+  screenYToWorldY,
+  carouselHudBandPx,
+  clampShiftToBand,
+  carouselTravelShiftY,
 } from "./carousel-tilt.js";
 import {
   playGrowTarget,
@@ -52,12 +54,13 @@ const CAROUSEL_FLOOR_Y = 0.05;
 const CAROUSEL_ROW_GAP_M = 0.85;
 /** Sit with the viewfinder, slightly above mid-screen. */
 const CAROUSEL_DROP_Y = -0.2;
-/** Extra downward drag so the top row can reach the viewfinder. */
-const CAROUSEL_DRAG_Y_MIN = -3.2;
-const CAROUSEL_DRAG_Y_MAX = 2.4;
+/** Input safety; the header–shutter band is the real visual stop. */
+const CAROUSEL_DRAG_Y_MIN = -10;
+const CAROUSEL_DRAG_Y_MAX = 10;
 const CAROUSEL_DRAG_LIFT = 0.007;
-/** Phone tilt moves the two-row ring farther per degree. */
+/** Phone tilt reaches the header or shutter with a modest lean. */
 const CAROUSEL_TILT_GAIN = 2.1;
+const CAROUSEL_TILT_SPAN = 0.36;
 const LOOK_FOV_DEFAULT = 60;
 const LOOK_FOV_MIN = 28;
 const LOOK_FOV_MAX = 78;
@@ -1017,37 +1020,51 @@ function layoutCameraCarousel() {
     }
   });
 
-  let shiftY = 0;
-  if (twoRow) {
-    let bottomY = 0;
-    let topY = 0;
-    let pairCount = 0;
-    for (const col of columns) {
-      if (!col[1]) continue;
-      bottomY += col[0].anchorY;
-      topY += col[1].anchorY;
-      pairCount += 1;
+  let stackBottom = Infinity;
+  let stackTop = -Infinity;
+  for (const col of columns) {
+    for (const node of col) {
+      const h = carouselNodeHeight(node);
+      stackBottom = Math.min(stackBottom, node.anchorY - h * 0.5);
+      stackTop = Math.max(stackTop, node.anchorY + h * 0.5);
     }
-    if (pairCount) {
-      bottomY /= pairCount;
-      topY /= pairCount;
-      const camY = camera?.position.y ?? 1.4;
-      const span = carouselRowSpan(bottomY, topY, radius);
-      const targetT = carouselTiltAmount(
-        state.carouselLookPitch,
-        span,
-        CAROUSEL_TILT_GAIN
-      );
-      state.carouselTiltT += (targetT - state.carouselTiltT) * 0.22;
-      shiftY = carouselRowShiftY(camY, bottomY, topY, state.carouselTiltT);
-    } else {
-      state.carouselTiltT = 0;
-    }
-  } else {
-    state.carouselTiltT = 0;
   }
-  shiftY += state.carouselDragY;
-  shiftY -= CAROUSEL_DROP_Y;
+
+  const viewH = renderer?.domElement?.clientHeight || window.innerHeight || 1;
+  const hudEl = document.querySelector(".hud-top");
+  const addEl = addBtn || document.getElementById("add-btn");
+  const { topPx, botPx } = carouselHudBandPx(
+    hudEl?.getBoundingClientRect?.().bottom,
+    addEl?.getBoundingClientRect?.().top,
+    viewH
+  );
+  const camY = camera?.position.y ?? 1.4;
+  const fov = camera?.fov ?? LOOK_FOV_DEFAULT;
+  const bandTop = screenYToWorldY(topPx, viewH, camY, radius, fov);
+  const bandBottom = screenYToWorldY(botPx, viewH, camY, radius, fov);
+  const restShift = -CAROUSEL_DROP_Y;
+  const highShift = bandTop - stackTop;
+  const lowShift = bandBottom - stackBottom;
+  const targetT = carouselTiltTravel(
+    state.carouselLookPitch,
+    CAROUSEL_TILT_SPAN,
+    CAROUSEL_TILT_GAIN
+  );
+  state.carouselTiltT += (targetT - state.carouselTiltT) * 0.22;
+  const tiltShift = carouselTravelShiftY(
+    state.carouselTiltT,
+    restShift,
+    highShift,
+    lowShift
+  );
+  let shiftY = clampShiftToBand(
+    tiltShift + state.carouselDragY,
+    stackBottom,
+    stackTop,
+    bandBottom,
+    bandTop
+  );
+  state.carouselDragY = shiftY - tiltShift;
   for (const col of columns) {
     for (const node of col) node.anchorY += shiftY;
   }
@@ -2124,7 +2141,7 @@ function updateCameraRig(dt) {
   }
 
   if (state.cameraLayout === "carousel") {
-    // Keep the ring level; two-row mode uses this pitch to slide rows into the viewfinder.
+    // Keep the ring level; pitch slides the stack between the header and shutter.
     _euler.setFromQuaternion(_targetQuat, "YXZ");
     const pitch = _euler.x;
     if (state.orientReady && state.carouselPitchBaseline == null) {

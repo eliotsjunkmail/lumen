@@ -5,6 +5,65 @@ export function carouselTiltAmount(pitch, span, gain = 1) {
   return Math.min(1, Math.max(0, (-pitch * g) / span));
 }
 
+/**
+ * Signed tilt across the header–shutter band.
+ * −1 = look down (photos toward the top bar), +1 = look up (photos toward the shutter).
+ */
+export function carouselTiltTravel(pitch, span, gain = 1) {
+  if (!(span > 1e-6)) return 0;
+  const g = Number.isFinite(gain) && gain > 0 ? gain : 1;
+  return Math.min(1, Math.max(-1, (-pitch * g) / span));
+}
+
+/**
+ * Convert a viewport Y (0 at top) into world Y on a plane `dist` meters
+ * in front of a level camera.
+ */
+export function screenYToWorldY(screenY, viewH, camY, dist, vFovDeg) {
+  if (!(viewH > 0) || !(dist > 0) || !(vFovDeg > 0) || !Number.isFinite(screenY)) {
+    return camY;
+  }
+  const halfH = dist * Math.tan((vFovDeg * Math.PI) / 360);
+  const ndcY = 1 - (2 * screenY) / viewH;
+  return camY + ndcY * halfH;
+}
+
+/** Header bottom → shutter top, in CSS pixels. */
+export function carouselHudBandPx(
+  hudBottom,
+  addTop,
+  viewH,
+  topPad = 10,
+  botPad = 18
+) {
+  const h = viewH > 0 ? viewH : 800;
+  const topPx = Number.isFinite(hudBottom) ? hudBottom + topPad : Math.min(72, h * 0.1);
+  const botPx = Number.isFinite(addTop)
+    ? addTop - botPad
+    : Math.max(h * 0.82, h - 110);
+  return { topPx, botPx };
+}
+
+/** Keep the unshifted stack inside [bandBottom, bandTop] after `shiftY`. */
+export function clampShiftToBand(shiftY, stackBottom, stackTop, bandBottom, bandTop) {
+  const stackH = stackTop - stackBottom;
+  const bandH = bandTop - bandBottom;
+  if (!(stackH > 0) || !(bandH > 0)) return shiftY;
+  if (stackH >= bandH) {
+    return (bandBottom + bandTop) * 0.5 - (stackBottom + stackTop) * 0.5;
+  }
+  const lo = bandBottom - stackBottom;
+  const hi = bandTop - stackTop;
+  return Math.min(hi, Math.max(lo, shiftY));
+}
+
+/** t=0 stays at rest; t→−1 reaches the header; t→+1 reaches the shutter. */
+export function carouselTravelShiftY(tiltT, restShift, highShift, lowShift) {
+  const t = Math.min(1, Math.max(-1, Number.isFinite(tiltT) ? tiltT : 0));
+  if (t <= 0) return restShift + (highShift - restShift) * -t;
+  return restShift + (lowShift - restShift) * t;
+}
+
 /** Vertical shift so t=0 centers the bottom row on the camera, t=1 the top. */
 export function carouselRowShiftY(camY, bottomY, topY, t) {
   const shiftBottom = camY - bottomY;
