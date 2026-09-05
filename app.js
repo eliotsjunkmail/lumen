@@ -26,6 +26,10 @@ import {
   carouselTravelShiftY,
   carouselAimAngle,
   stickyViewSize,
+  carouselYearGroups,
+  carouselYearMarkY,
+  carouselYearMarkRadius,
+  carouselFocusLabel,
 } from "./carousel-tilt.js";
 import {
   playGrowTarget,
@@ -1085,9 +1089,17 @@ function layoutCameraCarousel() {
     for (const node of col) node.anchorY += shiftY;
   }
 
+  const yearNodes = [];
+  const yearAngles = [];
+  columns.forEach((col, i) => {
+    for (const node of col) {
+      yearNodes.push(node);
+      yearAngles.push(angles[i]);
+    }
+  });
   syncCarouselYearMarks(
-    columns.map((col) => col[0]),
-    angles,
+    yearNodes,
+    yearAngles,
     radius,
     originX,
     originZ,
@@ -1095,7 +1107,7 @@ function layoutCameraCarousel() {
     fz,
     rx,
     rz,
-    shiftY
+    stackBottom + shiftY
   );
 }
 
@@ -1225,12 +1237,12 @@ function ensureCarouselYearMark() {
     new THREE.PlaneGeometry(1.35, 0.42),
     new THREE.MeshBasicMaterial({
       transparent: true,
-      depthTest: true,
+      depthTest: false,
       depthWrite: false,
       side: THREE.DoubleSide,
     })
   );
-  mesh.renderOrder = 3;
+  mesh.renderOrder = 26;
   mesh.visible = false;
   scene.add(mesh);
   state.carouselYearMarks.push(mesh);
@@ -1251,21 +1263,14 @@ function syncCarouselYearMarks(
   fz,
   rx,
   rz,
-  shiftY = 0
+  stackBottomY = 0
 ) {
   if (state.cameraLayout !== "carousel" || !scene) {
     hideCarouselYearMarks();
     return;
   }
 
-  const groups = [];
-  nearby.forEach((node, i) => {
-    const year = nodeTakenYear(node);
-    if (year == null) return;
-    const last = groups[groups.length - 1];
-    if (last && last.year === year) last.indices.push(i);
-    else groups.push({ year, indices: [i] });
-  });
+  const groups = carouselYearGroups(nearby.map((node) => nodeTakenYear(node)));
 
   while (state.carouselYearMarks.length < groups.length) ensureCarouselYearMark();
 
@@ -1288,7 +1293,7 @@ function syncCarouselYearMarks(
     }
     const p = pointOnCarouselRing(
       alpha,
-      radius,
+      carouselYearMarkRadius(radius),
       originX,
       originZ,
       fx,
@@ -1296,7 +1301,7 @@ function syncCarouselYearMarks(
       rx,
       rz
     );
-    mark.position.set(p.x, CAROUSEL_FLOOR_Y - 0.55 + shiftY, p.z);
+    mark.position.set(p.x, carouselYearMarkY(stackBottomY), p.z);
     mark.scale.setScalar(1.7);
     _groundEuler.set(0, yawTowardOrigin(p.x, p.z, originX, originZ), 0, "YXZ");
     mark.quaternion.setFromEuler(_groundEuler);
@@ -3495,9 +3500,11 @@ function setFocus(node) {
   state.focused = node;
   field.classList.toggle("is-locked", Boolean(node));
   if (node) {
-    focusLabel.textContent = node.thumbs
-      ? `${node.title} 👍${node.thumbs > 1 ? node.thumbs : ""}`
-      : node.title;
+    focusLabel.textContent = carouselFocusLabel(
+      node.title,
+      nodeTakenYear(node),
+      node.thumbs || 0
+    );
     ensurePreview(node);
     pausePreviews(node.id);
   } else {

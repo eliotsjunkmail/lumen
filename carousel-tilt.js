@@ -116,3 +116,35 @@ export function carouselRelativePitch(pitch, baseline) {
 export function carouselDragLiftDelta(screenDyPx) {
   return -screenDyPx;
 }
+
+/** Consecutive same-year clips share one mark. */
+export function carouselYearGroups(years) {
+  const groups = [];
+  (years || []).forEach((year, i) => {
+    if (year == null) return;
+    const last = groups[groups.length - 1];
+    if (last && last.year === year) last.indices.push(i);
+    else groups.push({ year, indices: [i] });
+  });
+  return groups;
+}
+
+/** Sit just under the lowest clip so travel keeps the years with the stack. */
+export function carouselYearMarkY(stackBottom, gap = 0.36) {
+  return (Number(stackBottom) || 0) - gap;
+}
+
+/** Pull the year slightly toward the viewer so a front clip cannot cover it. */
+export function carouselYearMarkRadius(radius, pull = 0.3) {
+  const r = Number(radius) || 0;
+  return Math.max(0.8, r - pull);
+}
+
+/** Keep a taken year on the focus line when the title omitted it. */
+export function carouselFocusLabel(title, year, thumbs = 0) {
+  const base = String(title || "").trim();
+  const labeled = thumbs > 0 ? `${base} 👍${thumbs > 1 ? thumbs : ""}` : base;
+  if (!year) return labeled;
+  if (labeled.includes(String(year))) return labeled;
+  return labeled ? `${labeled} · ${year}` : String(year);
+}

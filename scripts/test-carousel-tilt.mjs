@@ -11,6 +11,10 @@ import {
   carouselTravelShiftY,
   carouselAimAngle,
   stickyViewSize,
+  carouselYearGroups,
+  carouselYearMarkY,
+  carouselYearMarkRadius,
+  carouselFocusLabel,
 } from "../carousel-tilt.js";
 
 if (carouselTiltAmount(0, 0.2) !== 0) {
@@ -161,6 +165,24 @@ if (stickyViewSize(844, 848) !== 844) {
 }
 if (stickyViewSize(844, 700) !== 700) {
   throw new Error("a real resize should update the floor");
+}
+
+const yearGroups = carouselYearGroups([2011, 2011, 2014, 2015]);
+if (yearGroups.length !== 3) throw new Error("consecutive years should share a mark");
+if (yearGroups[0].indices.join(",") !== "0,1") {
+  throw new Error("2011 clips should group together");
+}
+if (Math.abs(carouselYearMarkY(0.05) - -0.31) > 1e-9) {
+  throw new Error("year marks should sit just under the stack");
+}
+if (carouselYearMarkRadius(6.2) >= 6.2) {
+  throw new Error("year marks should sit in front of the ring");
+}
+if (carouselFocusLabel("Clip Jul 16", 2024) !== "Clip Jul 16 · 2024") {
+  throw new Error("focus line should restore a missing year");
+}
+if (carouselFocusLabel("Picnic 2024", 2024) !== "Picnic 2024") {
+  throw new Error("a title that already has the year should stay put");
 }
 
 if (Math.abs(carouselTravelShiftY(0, 0.2, 3, -3) - 0.2) > 1e-9) {
