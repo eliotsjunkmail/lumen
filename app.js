@@ -4227,35 +4227,54 @@ async function syncSharedSpots() {
 async function enterField() {
   if (state.booting || state.booted) return;
   state.booting = true;
-  enterBtn.disabled = true;
-  enterBtn.textContent = "Opening…";
+  if (enterBtn) {
+    enterBtn.disabled = true;
+    enterBtn.textContent = "Opening…";
+  }
 
-  // Ask for motion while still in the user-gesture turn (required on iOS)
-  const motionOk = await requestMotionPermission();
-
-  let cameraOk = false;
   try {
-    await startCamera();
-    cameraOk = true;
+    // Ask for motion while still in the user-gesture turn (required on iOS).
+    // Time out so a stuck permission prompt cannot freeze the button.
+    const motionOk = await Promise.race([
+      requestMotionPermission(),
+      new Promise((resolve) => setTimeout(() => resolve(false), 2500)),
+    ]);
+
+    let cameraOk = false;
+    try {
+      await startCamera();
+      cameraOk = true;
+    } catch (err) {
+      console.error(err);
+      if (camEl) {
+        camEl.style.background =
+          "radial-gradient(circle at 30% 20%, #2a2a2a, #000000 60%)";
+      }
+    }
+
+    if (!motionOk) {
+      setStatus("Allow motion access for world-locked AR", 4200);
+    }
+
+    bootField(
+      cameraOk
+        ? motionOk
+          ? ""
+          : "Motion blocked — drag to look"
+        : "Camera blocked — drag to explore demo videos"
+    );
   } catch (err) {
     console.error(err);
-    camEl.style.background =
-      "radial-gradient(circle at 30% 20%, #2a2a2a, #000000 60%)";
+    if (!state.booted) {
+      bootField("Could not open the lens — try again");
+    }
+  } finally {
+    state.booting = false;
+    if (!state.booted && enterBtn) {
+      enterBtn.disabled = false;
+      enterBtn.textContent = "Open lens";
+    }
   }
-
-  if (!motionOk) {
-    setStatus("Allow motion access for world-locked AR", 4200);
-  }
-
-  bootField(
-    cameraOk
-      ? motionOk
-        ? ""
-        : "Motion blocked — drag to look"
-      : "Camera blocked — drag to explore demo videos"
-  );
-
-  state.booting = false;
 }
 
 enterBtn.addEventListener("click", enterField);

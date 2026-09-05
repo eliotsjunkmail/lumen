@@ -63,6 +63,7 @@ button {
 .gate-atmosphere {
   position: absolute;
   inset: 0;
+  z-index: 0;
   overflow: hidden;
   pointer-events: none;
 }
@@ -100,7 +101,7 @@ button {
 
 .gate-copy {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -198,18 +199,15 @@ button {
 }
 
 .cta-lens {
-  position: absolute;
-  z-index: 2;
-  left: 0;
-  right: 0;
-  top: 62%;
+  position: relative;
+  z-index: 3;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: fit-content;
   min-width: 11.5rem;
   min-height: 3.2rem;
-  margin: 0 auto;
+  margin: 0.4rem auto 0;
   padding: 0 1.8rem;
   border: 0;
   border-radius: 999px;
@@ -219,6 +217,10 @@ button {
   font-weight: 700;
   letter-spacing: 0.02em;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  touch-action: manipulation;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .cta-lens::after {
