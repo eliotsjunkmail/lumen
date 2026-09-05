@@ -78,6 +78,8 @@ const LOOK_FOV_MAX = 78;
 const CAROUSEL_HFOV = 40;
 const CAROUSEL_HFOV_SMALL = 56;
 const CAROUSEL_FOV_MAX = 145;
+/** Dark matte around video and image planes. */
+const CLIP_FRAME_COLOR = 0x242424;
 
 /** Stable anonymous id so users can delete their own shared pins. */
 function getDeviceId() {
@@ -1882,7 +1884,7 @@ function createNode(item, index) {
   const frame = new THREE.Mesh(
     new THREE.PlaneGeometry(2.56, 1.51),
     new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      color: CLIP_FRAME_COLOR,
       transparent: false,
       opacity: 1,
       depthWrite: true,
@@ -1892,7 +1894,7 @@ function createNode(item, index) {
   );
   frame.position.z = -0.01;
   frame.position.y = 0.2;
-  frame.visible = kind !== "image";
+  frame.visible = true;
 
   const backing = new THREE.Mesh(
     new THREE.PlaneGeometry(2.56, 1.51),
@@ -2337,7 +2339,7 @@ function updateNodes(t, dt) {
     }
     const zLift = front ? 0.22 + (node.playGrow || 0) * 0.12 : 0;
     if (node.kind === "image") {
-      node.frame.visible = false;
+      if (node.frame) node.frame.visible = true;
       // Flipbook + idle sway so creations feel alive
       if (node.animFrames?.length > 1 && node.animCtx) {
         const fps = 7;
@@ -2360,6 +2362,11 @@ function updateNodes(t, dt) {
       node.screen.rotation.z = sway;
       node.screen.scale.setScalar(breathe);
       node.screen.position.z = zLift;
+      if (node.frame) {
+        node.frame.rotation.z = sway;
+        node.frame.scale.setScalar(breathe);
+        node.frame.position.z = zLift - 0.01;
+      }
     } else {
       node.screen.rotation.z = 0;
       const viewScale = (carousel ? carouselScale() : cameraVideoScale(node)) * grow;
