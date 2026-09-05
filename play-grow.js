@@ -1,7 +1,9 @@
-/** Seconds to ease from rest size to 2× while the aimed clip plays. */
+/** Seconds to ease from rest size to the focused scale. */
 export const PLAY_GROW_EXPAND_SEC = 2;
 /** Faster shrink when the aperture leaves the clip. */
 export const PLAY_GROW_SHRINK_SEC = 0.65;
+/** Focused video size relative to rest (width and height). */
+export const PLAY_GROW_MAX = 1.5;
 
 /** 1 while a video is in the viewfinder; otherwise 0. */
 export function playGrowTarget({ focused, kind } = {}) {
@@ -31,8 +33,8 @@ export function stepPlayGrow(
   return Math.max(0, next);
 }
 
-/** Scale multiplier: 1 at rest, 2 when fully grown. */
+/** Scale multiplier: 1 at rest, PLAY_GROW_MAX when fully grown. */
 export function playGrowScale(playGrow) {
   const t = Math.min(1, Math.max(0, Number(playGrow) || 0));
-  return 1 + t;
+  return 1 + (PLAY_GROW_MAX - 1) * t;
 }

@@ -176,8 +176,8 @@ if (Math.abs(ys.bottom - 1.03) > 0.02) {
 if (ys.top - ys.bottom - 1.96 < 0.8) {
   throw new Error("two-row small carousel should leave air between rows");
 }
-const grown = stackedRowY(1.96 * 2, 1.96);
-if (grown.top - ys.top < 1.9) {
+const grown = stackedRowY(1.96 * 1.5, 1.96);
+if (grown.top - ys.top < 0.9) {
   throw new Error("growing the bottom clip should push the top row up");
 }
 const largeCols = four.map((id) => [id]);
