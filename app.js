@@ -3666,12 +3666,13 @@ async function startCamera() {
 
   let stream = null;
   let lastError = null;
-  for (const constraints of attempts) {
+  for (let i = 0; i < attempts.length; i += 1) {
     try {
+      const waitMs = i === 0 ? 8000 : 2000;
       stream = await Promise.race([
-        navigator.mediaDevices.getUserMedia(constraints),
+        navigator.mediaDevices.getUserMedia(attempts[i]),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Camera request timed out")), 8000)
+          setTimeout(() => reject(new Error("Camera request timed out")), waitMs)
         ),
       ]);
       break;
@@ -4231,60 +4232,61 @@ async function syncSharedSpots() {
   setAddMediaLoading(false);
 }
 
-async function enterField() {
+function enterField() {
   if (state.booting || state.booted) return;
   state.booting = true;
-  if (enterBtn) {
-    enterBtn.disabled = true;
-    enterBtn.textContent = "Opening…";
-  }
 
-  try {
-    // Ask for motion while still in the user-gesture turn (required on iOS).
-    // Time out so a stuck permission prompt cannot freeze the button.
-    const motionOk = await Promise.race([
-      requestMotionPermission(),
-      new Promise((resolve) => setTimeout(() => resolve(false), 2500)),
-    ]);
-
-    let cameraOk = false;
-    try {
-      await startCamera();
-      cameraOk = true;
-    } catch (err) {
+  // Safari drops the user-gesture if we disable the button or await
+  // before getUserMedia / DeviceOrientation.requestPermission.
+  const motionP = requestMotionPermission().catch(() => false);
+  const cameraP = startCamera()
+    .then(() => true)
+    .catch((err) => {
       console.error(err);
       if (camEl) {
         camEl.style.background =
           "radial-gradient(circle at 30% 20%, #2a2a2a, #000000 60%)";
       }
-    }
+      return false;
+    });
 
-    if (!motionOk) {
-      setStatus("Allow motion access for world-locked AR", 4200);
-    }
+  if (enterBtn) enterBtn.textContent = "Opening…";
 
-    bootField(
-      cameraOk
-        ? motionOk
-          ? ""
-          : "Motion blocked — drag to look"
-        : "Camera blocked — drag to explore demo videos"
-    );
-  } catch (err) {
-    console.error(err);
-    if (!state.booted) {
-      bootField("Could not open the lens — try again");
+  (async () => {
+    try {
+      const motionOk = await Promise.race([
+        motionP,
+        new Promise((resolve) => setTimeout(() => resolve(false), 4000)),
+      ]);
+      const cameraOk = await cameraP;
+      if (!motionOk) {
+        setStatus("Allow motion access for world-locked AR", 4200);
+      }
+      bootField(
+        cameraOk
+          ? motionOk
+            ? ""
+            : "Motion blocked — drag to look"
+          : "Camera blocked — drag to explore demo videos"
+      );
+    } catch (err) {
+      console.error(err);
+      if (!state.booted) {
+        bootField("Could not open the lens — try again");
+      }
+    } finally {
+      state.booting = false;
+      if (!state.booted && enterBtn) {
+        enterBtn.disabled = false;
+        enterBtn.textContent = "Open lens";
+      }
     }
-  } finally {
-    state.booting = false;
-    if (!state.booted && enterBtn) {
-      enterBtn.disabled = false;
-      enterBtn.textContent = "Open lens";
-    }
-  }
+  })();
 }
 
 enterBtn.addEventListener("click", enterField);
+enterBtn.addEventListener("pointerup", enterField);
+enterBtn.addEventListener("touchend", enterField, { passive: false });
 watchBtn?.addEventListener("click", () => {
   const node = resolveWatchNode();
   if (node) openTheater(node);
